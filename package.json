@@ -1,0 +1,57 @@
+{
+  "name": "awesome-emulator-cli",
+  "version": "0.1.0",
+  "description": "Awesome Emulator CLI for use with AWS Emulator in local tests from npm scripts or Node.js. It runs the upstream Linux package in Docker.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "awesome-emulator": "./bin/awesome-emulator.js"
+  },
+  "scripts": {
+    "prebuild": "node scripts/clean-dist.js",
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test",
+    "test:integration": "node --test test/integration.test.js",
+    "prepare": "npm run build",
+    "prepack": "npm run build",
+    "check:release-version": "node scripts/check-release-version.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "files": [
+    "bin/",
+    "dist/",
+    "README.md",
+    "LICENSE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/c19yamamoto/awesome-emulator-cli.git"
+  },
+  "homepage": "https://github.com/c19yamamoto/awesome-emulator-cli#readme",
+  "bugs": {
+    "url": "https://github.com/c19yamamoto/awesome-emulator-cli/issues"
+  },
+  "keywords": [
+    "aws",
+    "emulator",
+    "testing",
+    "integration-tests"
+  ],
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.43",
+    "typescript": "^5.9.3"
+  }
+}
