@@ -15,14 +15,14 @@ export type ResolvedEmulatorOptions = {
   startupTimeoutMs: number;
 };
 
-const DEFAULT_VERSION = "1.0.522";
+export const DEFAULT_VERSION = "1.0.522";
 const DEFAULT_PORT = 9297;
 const DEFAULT_MEMORY = "2g";
 
 function normalizeVersion(value: string | undefined, environment: NodeJS.ProcessEnv): string {
   const version = value ?? environment.AWS_EMULATOR_VERSION ?? DEFAULT_VERSION;
   if (!/^\d+\.\d+\.\d+$/.test(String(version))) {
-    throw new Error(`Invalid AWS Emulator version: ${version}. Use a version such as 1.0.522.`);
+    throw new Error(`Invalid AWS Emulator version: ${version}. Use a version such as ${DEFAULT_VERSION}.`);
   }
   return String(version);
 }

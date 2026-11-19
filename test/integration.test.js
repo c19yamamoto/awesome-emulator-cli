@@ -21,7 +21,6 @@ function getHealth(url, ca) {
 
 test("starts AWS Emulator in Docker and returns usable connection settings", { skip: !enabled }, async () => {
   const emulator = await startEmulator({
-    version: process.env.AWS_EMULATOR_VERSION ?? "1.0.522",
     port: 0,
     telemetry: "off",
     startupTimeoutMs: 300_000,

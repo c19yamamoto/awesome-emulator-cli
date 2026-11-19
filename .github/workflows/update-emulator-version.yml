@@ -1,0 +1,45 @@
+name: Update AWS Emulator version
+
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: main
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+      - name: Check the latest upstream release
+        id: update
+        run: node scripts/update-emulator-version.js
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+      - name: Open or refresh a draft pull request
+        if: steps.update.outputs.updated == 'true'
+        env:
+          BRANCH: codex/update-aws-emulator-version
+          GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+          VERSION: ${{ steps.update.outputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch --create "$BRANCH"
+          git add src/emulator-options.ts
+          git commit -m "feat: update default AWS Emulator to $VERSION"
+          git push --force origin "HEAD:refs/heads/$BRANCH"
+
+          title="feat: update default AWS Emulator to $VERSION"
+          body="Updates the wrapper's default AWS Emulator version to $VERSION. CI validates the new version before the wrapper release. Squash-merging this PR lets Release Please propose the next minor release."
+          pr_number="$(gh pr list --state open --head "$GITHUB_REPOSITORY_OWNER:$BRANCH" --json number --jq '.[0].number')"
+          if [ -n "$pr_number" ]; then
+            gh pr edit "$pr_number" --title "$title" --body "$body"
+          else
+            gh pr create --draft --base main --head "$BRANCH" --title "$title" --body "$body"
+          fi
