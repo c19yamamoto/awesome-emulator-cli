@@ -115,6 +115,7 @@ ARG AWS_EMULATOR_RPM_ARCH
 RUN set -eu; \\
     export GNUPGHOME=/tmp/aws-emulator-gnupg; \\
     mkdir -m 0700 "$GNUPGHOME"; \\
+    dnf swap -y gnupg2-minimal gnupg2-full; \\
     curl -fsSLo /tmp/aws-emulator.rpm ${PACKAGE_ROOT}/aws-emulator-\${AWS_EMULATOR_VERSION}-1-\${AWS_EMULATOR_RPM_ARCH}.rpm; \\
     curl -fsSLo /tmp/aws-emulator.rpm.sig ${PACKAGE_ROOT}/aws-emulator-\${AWS_EMULATOR_VERSION}-1-\${AWS_EMULATOR_RPM_ARCH}.rpm.sig; \\
     curl -fsSLo /tmp/aws-publishing.asc ${PACKAGE_SIGNING_KEY}; \\
@@ -122,6 +123,8 @@ RUN set -eu; \\
     fingerprint="$(gpg --batch --with-colons --fingerprint ssm-publishing@amazon.com | awk -F: '$1 == "fpr" { print $10; exit }')"; \\
     test "$fingerprint" = "${PACKAGE_SIGNING_FINGERPRINT}"; \\
     gpg --batch --verify /tmp/aws-emulator.rpm.sig /tmp/aws-emulator.rpm; \\
+    dnf remove -y gnupg2-smime; \\
+    dnf swap -y gnupg2-full gnupg2-minimal; \\
     rpm -i /tmp/aws-emulator.rpm; \\
     mkdir -p /home/emulator/.aws/emulator; \\
     chown -R 1000:1000 /home/emulator; \\
