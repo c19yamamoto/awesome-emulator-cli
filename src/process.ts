@@ -1,12 +1,18 @@
 import { spawn } from "node:child_process";
 import { FORWARDED_SIGNALS, getSignalExitCode, isForwardedSignal, type ForwardedSignal } from "./signals.js";
 
-export function runCommand(command: string, args: string[], env: NodeJS.ProcessEnv, signal?: AbortSignal): Promise<number> {
+export function runCommand(
+  command: string,
+  args: string[],
+  env: NodeJS.ProcessEnv,
+  signal?: AbortSignal,
+  shell = false,
+): Promise<number> {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
       env,
       stdio: "inherit",
-      shell: process.platform === "win32",
+      shell,
       windowsHide: false,
     });
     let receivedSignal: ForwardedSignal | undefined;

@@ -8,10 +8,10 @@ import { createRetryableStop, startContainer, stopContainer, withEmulator } from
 import { docker, throwIfAborted } from "./docker.js";
 import { createChildEnvironment, createEmulatorConnectionSettings, type EmulatorEnvironment } from "./emulator-environment.js";
 import { ensureEmulatorImage, getArchitecture, type EmulatorArchitecture } from "./emulator-image.js";
-import { resolveEmulatorOptions, type StartEmulatorOptions } from "./emulator-options.js";
+import { resolveEmulatorOptions, type RunWithEmulatorOptions, type StartEmulatorOptions } from "./emulator-options.js";
 import { runCommand } from "./process.js";
 
-export type { StartEmulatorOptions } from "./emulator-options.js";
+export type { RunWithEmulatorOptions, StartEmulatorOptions } from "./emulator-options.js";
 export type { EmulatorEnvironment } from "./emulator-environment.js";
 
 export type EmulatorSession = {
@@ -190,10 +190,11 @@ export async function startEmulator(options: StartEmulatorOptions = {}): Promise
 /**
  * Run a child process with AWS Emulator settings and stop the emulator afterward.
  */
-export async function runWithEmulator(command: string, args: string[] = [], options: StartEmulatorOptions = {}): Promise<number> {
+export async function runWithEmulator(command: string, args: string[] = [], options: RunWithEmulatorOptions = {}): Promise<number> {
   if (!command) throw new Error("A command is required.");
-  return withEmulator(() => startEmulator(options), async (emulator) => {
+  const { shell = false, ...emulatorOptions } = options;
+  return withEmulator(() => startEmulator(emulatorOptions), async (emulator) => {
     const childEnvironment = createChildEnvironment(process.env, emulator.environment);
-    return runCommand(command, args, childEnvironment, options.signal);
+    return runCommand(command, args, childEnvironment, emulatorOptions.signal, shell);
   });
 }

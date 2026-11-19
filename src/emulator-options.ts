@@ -7,6 +7,15 @@ export type StartEmulatorOptions = {
   signal?: AbortSignal;
 };
 
+export type RunWithEmulatorOptions = StartEmulatorOptions & {
+  /**
+   * Run the child command through a shell. Shell metacharacters in command or
+   * arguments are interpreted, so only enable this for trusted values.
+   * Defaults to false.
+   */
+  shell?: boolean;
+};
+
 export type ResolvedEmulatorOptions = {
   version: string;
   requestedPort: number;

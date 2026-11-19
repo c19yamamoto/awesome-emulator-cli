@@ -7,18 +7,20 @@ type ParsedArgs =
   | { help: true }
   | { help: false; command?: string; options: CliOptions; commandArgs: string[] };
 
-type CliOptions = Pick<StartEmulatorOptions, "version" | "port" | "telemetry" | "memory">;
+type CliValueOption = keyof Pick<StartEmulatorOptions, "version" | "port" | "telemetry" | "memory">;
+type CliOptions = Pick<StartEmulatorOptions, CliValueOption> & { shell?: boolean };
 
 function usage() {
   console.log(`Usage:
   awesome-emulator start [options]
-  awesome-emulator run [options] -- <command> [args...]
+  awesome-emulator run [options] [--shell] -- <command> [args...]
 
 Options:
   -v, --version <version>     AWS Emulator version (default: 1.0.522)
   -p, --port <port>           Host port; 0 chooses an available port (default: 9297)
   -t, --telemetry <on|off>    Telemetry setting (default: on)
       --memory <limit>        Container memory limit (default: 2g)
+      --shell                 (run only) Enable .cmd/.bat and built-ins; trusted values only
   -h, --help                  Show this help`);
 }
 
@@ -39,7 +41,12 @@ function parse(argv: string[]): ParsedArgs {
       continue;
     }
     if (token === "-h" || token === "--help") return { help: true };
-    const optionNames: Record<string, keyof CliOptions> = {
+    if (token === "--shell") {
+      if (command !== "run") throw new Error("--shell can only be used with the run command.");
+      options.shell = true;
+      continue;
+    }
+    const optionNames: Record<string, CliValueOption> = {
       "-v": "version", "--version": "version",
       "-p": "port", "--port": "port",
       "-t": "telemetry", "--telemetry": "telemetry",
@@ -86,7 +93,13 @@ async function main(signal: AbortSignal): Promise<number> {
   }
 
   if (parsed.command === "start") {
-    const emulator = await startEmulator({ ...parsed.options, signal });
+    const emulator = await startEmulator({
+      version: parsed.options.version,
+      port: parsed.options.port,
+      telemetry: parsed.options.telemetry,
+      memory: parsed.options.memory,
+      signal,
+    });
     try {
       if (!signal.aborted) {
         console.log(JSON.stringify({
