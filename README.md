@@ -21,6 +21,14 @@ npx awesome-emulator run -- npm test
 
 `run` starts the emulator, supplies the connection settings to the child process, then stops the container. Use `--version` to select a release and `--port 0` to choose a free local port. Run `npx awesome-emulator --help` for all options.
 
+Child commands run without a shell by default, so each argument is passed as data. On Windows, `.cmd` and `.bat` launchers such as `npm`, and shell built-ins such as `echo` and `dir`, require an explicit shell opt-in:
+
+```sh
+npx awesome-emulator run --shell -- npm test
+```
+
+Use `--shell` only with trusted command and argument values. Shell metacharacters are interpreted in this mode. Node.js API callers can opt in with `runWithEmulator(command, args, { shell: true })` under the same restriction.
+
 ## Use from Node.js
 
 Use the API when your test harness needs to control the emulator lifecycle directly:
