@@ -7,6 +7,10 @@ updates:
       day: "sunday"
       time: "10:00"
       timezone: "Asia/Tokyo"
+    groups:
+      all-github-actions:
+        patterns:
+          - "*"
   - package-ecosystem: "npm"
     directory: "/"
     schedule:
@@ -14,3 +18,7 @@ updates:
       day: "sunday"
       time: "10:00"
       timezone: "Asia/Tokyo"
+    groups:
+      all-npm:
+        patterns:
+          - "*"
