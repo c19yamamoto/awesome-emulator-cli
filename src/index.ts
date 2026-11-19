@@ -123,6 +123,7 @@ RUN set -eu; \\
     fingerprint="$(gpg --batch --with-colons --fingerprint ssm-publishing@amazon.com | awk -F: '$1 == "fpr" { print $10; exit }')"; \\
     test "$fingerprint" = "${PACKAGE_SIGNING_FINGERPRINT}"; \\
     gpg --batch --verify /tmp/aws-emulator.rpm.sig /tmp/aws-emulator.rpm; \\
+    dnf remove -y gnupg2-smime; \\
     dnf swap -y gnupg2-full gnupg2-minimal; \\
     rpm -i /tmp/aws-emulator.rpm; \\
     mkdir -p /home/emulator/.aws/emulator; \\
