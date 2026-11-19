@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -46,13 +47,31 @@ ENTRYPOINT ["aws-emulator", "-b", "0.0.0.0"]
 `;
 }
 
+export function createEmulatorImageTag(
+  version: string,
+  architecture: EmulatorArchitecture,
+  dockerfile: string,
+): string {
+  const buildDefinitionHash = createHash("sha256")
+    .update(JSON.stringify({
+      dockerfile,
+      version,
+      dockerArchitecture: architecture.docker,
+      rpmArchitecture: architecture.rpm,
+    }))
+    .digest("hex");
+
+  return `awesome-emulator-cli:${version}-${architecture.docker}-${buildDefinitionHash}`;
+}
+
 export async function ensureEmulatorImage(
   version: string,
   architecture: EmulatorArchitecture,
   signal?: AbortSignal,
 ): Promise<string> {
   throwIfAborted(signal);
-  const image = `awesome-emulator-cli:${version}-${architecture.docker}`;
+  const dockerfile = createEmulatorDockerfile();
+  const image = createEmulatorImageTag(version, architecture, dockerfile);
   try {
     await docker(["image", "inspect", image], { capture: true, signal });
     throwIfAborted(signal);
@@ -63,7 +82,6 @@ export async function ensureEmulatorImage(
   }
 
   const context = await mkdtemp(path.join(os.tmpdir(), "awesome-emulator-cli-"));
-  const dockerfile = createEmulatorDockerfile();
 
   try {
     throwIfAborted(signal);

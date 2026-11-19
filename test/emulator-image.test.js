@@ -4,7 +4,20 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { createEmulatorDockerfile } from "../dist/emulator-image.js";
+import { createEmulatorDockerfile, createEmulatorImageTag } from "../dist/emulator-image.js";
+
+test("keys cached emulator images by the build definition and arguments", () => {
+  const version = "1.0.522";
+  const architecture = { docker: "amd64", rpm: "x86_64" };
+  const dockerfile = createEmulatorDockerfile();
+  const tag = createEmulatorImageTag(version, architecture, dockerfile);
+
+  assert.match(tag, /^awesome-emulator-cli:1\.0\.522-amd64-[a-f0-9]{64}$/);
+  assert.equal(createEmulatorImageTag(version, architecture, dockerfile), tag);
+  assert.notEqual(createEmulatorImageTag(version, architecture, `${dockerfile}\n`), tag);
+  assert.notEqual(createEmulatorImageTag("1.0.523", architecture, dockerfile), tag);
+  assert.notEqual(createEmulatorImageTag(version, { docker: "arm64", rpm: "aarch64" }, dockerfile), tag);
+});
 
 test("restricts RPM signature verification to the pinned publisher key", () => {
   const dockerfile = createEmulatorDockerfile();
