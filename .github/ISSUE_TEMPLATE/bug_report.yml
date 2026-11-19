@@ -1,0 +1,46 @@
+name: Bug report
+description: Report a problem with awesome-emulator-cli.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For security vulnerabilities, use the [private reporting process](https://github.com/c19yamamoto/awesome-emulator-cli/security/advisories/new).
+  - type: textarea
+    id: behavior
+    attributes:
+      label: What happened?
+      description: Describe the behavior and any error message.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: How can we reproduce it?
+      description: Include the command or a minimal example.
+      placeholder: |
+        1. Run ...
+        2. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: OS and architecture, Node.js, Docker, and AWS Emulator versions.
+      placeholder: macOS 15 arm64; Node.js 22; Docker 28; AWS Emulator 1.0.522
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or additional context
+      description: Remove credentials and other sensitive data before posting.
+    validations:
+      required: false
