@@ -1,10 +1,5 @@
 import { spawn } from "node:child_process";
-
-const signalExitCodes: Partial<Record<NodeJS.Signals, number>> = {
-  SIGHUP: 129,
-  SIGINT: 130,
-  SIGTERM: 143,
-};
+import { FORWARDED_SIGNALS, getSignalExitCode, isForwardedSignal, type ForwardedSignal } from "./signals.js";
 
 export function runCommand(command: string, args: string[], env: NodeJS.ProcessEnv, signal?: AbortSignal): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -14,20 +9,20 @@ export function runCommand(command: string, args: string[], env: NodeJS.ProcessE
       shell: process.platform === "win32",
       windowsHide: false,
     });
-    let receivedSignal: NodeJS.Signals | undefined;
+    let receivedSignal: ForwardedSignal | undefined;
     let settled = false;
-    const handlers = new Map<NodeJS.Signals, () => void>();
+    const handlers = new Map<ForwardedSignal, () => void>();
     let abortHandler: (() => void) | undefined;
     const cleanup = () => {
       for (const [signal, handler] of handlers) process.removeListener(signal, handler);
       if (abortHandler) signal?.removeEventListener("abort", abortHandler);
     };
-    const forwardSignal = (signal: NodeJS.Signals) => {
+    const forwardSignal = (signal: ForwardedSignal) => {
       if (receivedSignal) return;
       receivedSignal = signal;
       child.kill(signal);
     };
-    for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
+    for (const signal of FORWARDED_SIGNALS) {
       const handler = () => forwardSignal(signal);
       handlers.set(signal, handler);
       process.once(signal, handler);
@@ -35,7 +30,7 @@ export function runCommand(command: string, args: string[], env: NodeJS.ProcessE
     if (signal) {
       abortHandler = () => {
         const reason = signal.reason;
-        const abortSignal = reason === "SIGINT" || reason === "SIGTERM" || reason === "SIGHUP" ? reason : "SIGTERM";
+        const abortSignal = isForwardedSignal(reason) ? reason : "SIGTERM";
         forwardSignal(abortSignal);
       };
       if (signal.aborted) abortHandler();
@@ -53,7 +48,7 @@ export function runCommand(command: string, args: string[], env: NodeJS.ProcessE
       settled = true;
       cleanup();
       if (receivedSignal) {
-        resolve(signalExitCodes[receivedSignal] ?? 1);
+        resolve(getSignalExitCode(receivedSignal));
       } else if (signal) {
         resolve(1);
       } else {

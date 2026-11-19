@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { runWithEmulator, startEmulator, type StartEmulatorOptions } from "./index.js";
+import { FORWARDED_SIGNALS, getSignalExitCode, type ForwardedSignal } from "./signals.js";
 
 type ParsedArgs =
   | { help: true }
@@ -60,10 +61,7 @@ function waitForAbort(signal: AbortSignal): Promise<void> {
 }
 
 function signalExitCode(signal: AbortSignal): number {
-  if (signal.reason === "SIGINT") return 130;
-  if (signal.reason === "SIGTERM") return 143;
-  if (signal.reason === "SIGHUP") return 129;
-  return 1;
+  return getSignalExitCode(signal.reason);
 }
 
 function formatError(error: unknown): string {
@@ -112,8 +110,8 @@ async function main(signal: AbortSignal): Promise<number> {
 }
 
 const controller = new AbortController();
-const signalHandlers = new Map<NodeJS.Signals, () => void>();
-for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
+const signalHandlers = new Map<ForwardedSignal, () => void>();
+for (const signal of FORWARDED_SIGNALS) {
   const handler = () => controller.abort(signal);
   signalHandlers.set(signal, handler);
   process.once(signal, handler);
