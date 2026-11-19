@@ -29,6 +29,13 @@ function isAvailable(command) {
   return spawnSync(command, ["--version"], { stdio: "ignore" }).status === 0;
 }
 
+function gpgHomePath(tempDir) {
+  if (process.platform !== "win32") return tempDir;
+  const windowsPath = /^([A-Za-z]):[\\/](.*)$/.exec(tempDir);
+  assert.ok(windowsPath, `Expected a drive-qualified Windows temp path, got ${tempDir}`);
+  return `/${windowsPath[1].toLowerCase()}/${windowsPath[2].replaceAll("\\", "/")}`;
+}
+
 function getFingerprint(uid, env) {
   const output = run("gpg", ["--batch", "--with-colons", "--fingerprint", uid], env);
   const fingerprint = output
@@ -43,7 +50,7 @@ test("rejects an RPM signature made by an unrelated key in the downloaded bundle
   skip: !isAvailable("gpg") || !isAvailable("gpgv") ? "requires gpg and gpgv" : false,
 }, async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "gpg-"));
-  const gnupgHome = tempDir;
+  const gnupgHome = gpgHomePath(tempDir);
   const env = { ...process.env, GNUPGHOME: gnupgHome, LC_ALL: "C" };
 
   try {
