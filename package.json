@@ -42,7 +42,9 @@
   },
   "keywords": [
     "aws",
+    "aws-sdk",
     "emulator",
+    "local-development",
     "testing",
     "integration-tests"
   ],
