@@ -43,7 +43,7 @@ jobs:
             "Release-As: $RELEASE_AS")"
           pr_number="$(gh pr list --state open --head "$GITHUB_REPOSITORY_OWNER:$BRANCH" --json number --jq '.[0].number')"
           if [ -n "$pr_number" ]; then
-            gh api --method PATCH "repos/$GITHUB_REPOSITORY/pulls/$pr_number" --raw-field "title=$title" --raw-field "body=$body"
+            gh pr edit "$pr_number" --title "$title" --body "$body"
           else
             gh pr create --base main --head "$BRANCH" --title "$title" --body "$body"
           fi
