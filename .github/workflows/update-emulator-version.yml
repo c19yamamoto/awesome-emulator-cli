@@ -27,20 +27,18 @@ jobs:
           BRANCH: update-aws-emulator-version
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.update.outputs.version }}
-          RELEASE_AS: ${{ steps.update.outputs.release_as }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git switch --create "$BRANCH"
           git add src/emulator-options.ts
           title="chore(emulator-version): update AWS Emulator to v$VERSION"
-          git commit -m "$title" -m "Release-As: $RELEASE_AS"
+          git commit -m "$title"
           git push --force origin "HEAD:refs/heads/$BRANCH"
 
           body="$(printf '%s\n%s\n\n%s\n' \
             "Updates the wrapper's default AWS Emulator version to v$VERSION. CI validates the new version before the wrapper release." \
-            "Preserve the Release-As footer when squash-merging to request the next minor wrapper release ($RELEASE_AS)." \
-            "Release-As: $RELEASE_AS")"
+            "The chore commit is included in the Maintenance changelog section and triggers a patch wrapper release.")"
           pr_number="$(gh pr list --state open --head "$GITHUB_REPOSITORY_OWNER:$BRANCH" --json number --jq '.[0].number')"
           if [ -n "$pr_number" ]; then
             gh pr edit "$pr_number" --title "$title" --body "$body"
