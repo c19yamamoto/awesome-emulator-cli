@@ -3,6 +3,7 @@ import { pathToFileURL } from "node:url";
 
 const RELEASES_URL = "https://api.github.com/repos/aws/aws-emulator/releases/latest";
 const OPTIONS_FILE = new URL("../src/emulator-options.ts", import.meta.url);
+const PACKAGE_FILE = new URL("../package.json", import.meta.url);
 
 function compareVersions(left, right) {
   const leftParts = left.split(".").map(Number);
@@ -13,9 +14,16 @@ function compareVersions(left, right) {
   return 0;
 }
 
+function nextMinorVersion(version) {
+  const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(version);
+  if (!match) throw new Error(`Unexpected package version: ${version}.`);
+  return `${match[1]}.${Number(match[2]) + 1}.0`;
+}
+
 export async function updateEmulatorVersion({
   fetchImpl = fetch,
   optionsFile = OPTIONS_FILE,
+  packageFile = PACKAGE_FILE,
   outputFile = process.env.GITHUB_OUTPUT,
   token = process.env.GITHUB_TOKEN,
   log = console.log,
@@ -39,6 +47,8 @@ export async function updateEmulatorVersion({
   const currentMatch = defaultVersion.exec(source);
   if (!currentMatch) throw new Error("Could not find DEFAULT_VERSION in src/emulator-options.ts.");
 
+  const packageJson = JSON.parse(await readFile(packageFile, "utf8"));
+  const releaseAs = nextMinorVersion(packageJson.version);
   const currentVersion = currentMatch[1];
   const updated = compareVersions(upstreamVersion, currentVersion) > 0;
   if (updated) {
@@ -49,10 +59,10 @@ export async function updateEmulatorVersion({
   }
 
   if (outputFile) {
-    await appendFile(outputFile, `updated=${updated}\nversion=${upstreamVersion}\n`);
+    await appendFile(outputFile, `updated=${updated}\nversion=${upstreamVersion}\nrelease_as=${releaseAs}\n`);
   }
 
-  return { updated, version: upstreamVersion };
+  return { updated, version: upstreamVersion, releaseAs };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
