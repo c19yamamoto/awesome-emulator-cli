@@ -38,12 +38,12 @@ function getProcessStartMarker(pid: number): string | undefined {
   const isWindows = process.platform === "win32";
   const command = isWindows ? "powershell.exe" : "ps";
   const args = isWindows
-    ? ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", `[System.Diagnostics.Process]::GetProcessById(${pid}).StartTime.ToUniversalTime().ToString('o')`]
+    ? ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", `$process = [System.Diagnostics.Process]::GetProcessById(${pid}); $process.StartTime.ToUniversalTime().ToString('o')`]
     : ["-o", "lstart=", "-p", String(pid)];
   const result = spawnSync(command, args, {
     encoding: "utf8",
     env: { ...process.env, LC_ALL: "C", TZ: "UTC" },
-    timeout: 2000,
+    timeout: isWindows ? 15_000 : 2_000,
     windowsHide: true,
   });
   if (result.error || result.status !== 0) return undefined;
