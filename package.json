@@ -1,6 +1,6 @@
 {
   "name": "awesome-emulator-cli",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Awesome Emulator CLI for use with AWS Emulator in local tests from npm scripts or Node.js. It runs the upstream Linux package in Docker.",
   "type": "module",
   "main": "./dist/index.js",
