@@ -7,6 +7,7 @@ import {
   runWithEmulator,
   startEmulator,
   upEmulatorSession,
+  type EmulatorCredentialsMode,
   type RunWithEmulatorOptions,
   type StartEmulatorOptions,
 } from "./index.js";
@@ -18,18 +19,18 @@ type ParsedArgs =
   | { help: true }
   | { help: false; command?: string; options: CliOptions; commandArgs: string[] };
 
-type CliValueOption = "version" | "port" | "telemetry" | "memory" | "region" | "session" | "stateDirectory";
+type CliValueOption = "version" | "port" | "telemetry" | "memory" | "region" | "session" | "stateDirectory" | "credentials";
 type CliOptions = Pick<StartEmulatorOptions, "version" | "port" | "telemetry" | "memory" | "stateDirectory">
   & Pick<RunWithEmulatorOptions, "region" | "sdks">
-  & { shell?: boolean; session?: string; init?: boolean };
+  & { shell?: boolean; session?: string; init?: boolean; credentials?: EmulatorCredentialsMode };
 
 function usage() {
   console.log(`Usage:
   awesome-emulator prepare [--version <version>]
   awesome-emulator start [options] [--state-dir <path>]
-  awesome-emulator run [options] [--state-dir <path>] [--region <region>] [--sdk <family>]... [--shell] -- <command> [args...]
+  awesome-emulator run [options] [--state-dir <path>] [--region <region>] [--sdk <family>]... [--credentials <files|env>] [--shell] -- <command> [args...]
   awesome-emulator up --session <name> [options] [--state-dir <path>] [--init [child options] -- <command> [args...]]
-  awesome-emulator exec --session <name> [--state-dir <path>] [--region <region>] [--sdk <family>]... [--shell] -- <command> [args...]
+  awesome-emulator exec --session <name> [--state-dir <path>] [--region <region>] [--sdk <family>]... [--credentials <files|env>] [--shell] -- <command> [args...]
   awesome-emulator down --session <name> [--state-dir <path>]
 
 Options:
@@ -42,6 +43,7 @@ Options:
       --session <name>        (up/exec/down) Persistent emulator session name
       --sdk <family>          (run/exec/up --init) Add SDK-specific TLS settings; repeatable
                               (${SUPPORTED_EMULATOR_SDKS.join(", ")})
+      --credentials <mode>    (run/exec/up --init) Credentials delivery: files (default) or env
       --shell                 (run/exec/up --init) Enable .cmd/.bat and built-ins; trusted values only
       --init                  (up only) Run a command after the emulator becomes healthy
   -h, --help                  Show this help`);
@@ -98,6 +100,7 @@ function parse(argv: string[]): ParsedArgs {
       "--region": "region",
       "--session": "session",
       "--state-dir": "stateDirectory",
+      "--credentials": "credentials",
     };
     const key = optionNames[token];
     if (!key) throw new Error(`Unknown option: ${token}`);
@@ -110,15 +113,23 @@ function parse(argv: string[]): ParsedArgs {
     if (key === "stateDirectory" && !["start", "run", "up", "exec", "down"].includes(command ?? "")) {
       throw new Error("--state-dir can only be used with start, run, up, exec, or down.");
     }
+    if (key === "credentials" && command !== "run" && command !== "exec" && command !== "up") {
+      throw new Error("--credentials can only be used with the run or exec command, or with up --init.");
+    }
     if (command === "prepare" && key !== "version") {
       throw new Error(`${token} can only be used with the start or run command.`);
     }
-    if ((command === "exec" || command === "down") && key !== "region" && key !== "session" && key !== "stateDirectory") {
+    if ((command === "exec" || command === "down") && key !== "region" && key !== "session" && key !== "stateDirectory" && key !== "credentials") {
       throw new Error(`${token} cannot be used with the ${command} command.`);
     }
     const value = argv[index + 1];
     if (!value || value.startsWith("--")) throw new Error(`Missing value for ${token}`);
-    options[key] = value;
+    if (key === "credentials") {
+      if (value !== "files" && value !== "env") throw new Error("--credentials must be files or env.");
+      options.credentials = value === "env" ? "environment" : "files";
+    } else {
+      options[key] = value;
+    }
     index += 1;
   }
   if ((command === "up" || command === "exec" || command === "down") && !options.session) {
@@ -128,7 +139,7 @@ function parse(argv: string[]): ParsedArgs {
     if (initRequested && (!separator || commandArgs.length === 0)) {
       throw new Error("Usage: awesome-emulator up --session <name> [options] --init -- <command> [args...]");
     }
-    if (!initRequested && (separator || options.region || options.sdks || options.shell)) {
+    if (!initRequested && (separator || options.region || options.sdks || options.shell || options.credentials)) {
       throw new Error("Child command options and arguments for up require --init.");
     }
   }
@@ -180,6 +191,7 @@ async function main(signal: AbortSignal): Promise<number> {
         region: parsed.options.region,
         sdks: parsed.options.sdks,
         shell: parsed.options.shell,
+        credentials: parsed.options.credentials,
       } : undefined,
     });
     console.log(JSON.stringify(session, null, 2));
@@ -194,6 +206,7 @@ async function main(signal: AbortSignal): Promise<number> {
       sdks: parsed.options.sdks,
       shell: parsed.options.shell,
       stateDirectory: parsed.options.stateDirectory,
+      credentials: parsed.options.credentials,
       signal,
     });
   }

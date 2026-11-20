@@ -10,22 +10,27 @@ import {
   createEmulatorConnectionSettings,
   normalizeEmulatorSdks,
   resolveAwsRegion,
+  type ChildEnvironmentOptions,
   type EmulatorEnvironment,
   type EmulatorSdk,
 } from "./emulator-environment.js";
+import { readEmulatorCredentialEnvironment } from "./emulator-credentials.js";
 import { ensureEmulatorImage, getArchitecture, type EmulatorArchitecture } from "./emulator-image.js";
 import { isSessionOwnerRunning, readSession, removeSession, reserveSession, validateSessionName, writeRunningSession, type RunningSessionRecord } from "./session-store.js";
 import {
   resolveEmulatorOptions,
   resolveEmulatorStateDirectory,
+  resolveEmulatorCredentialsMode,
   resolveEmulatorVersion,
   type PrepareEmulatorOptions,
+  type EmulatorCredentialsMode,
   type RunWithEmulatorOptions,
   type StartEmulatorOptions,
 } from "./emulator-options.js";
 import { runCommand } from "./process.js";
 
 export type { PrepareEmulatorOptions, RunWithEmulatorOptions, StartEmulatorOptions } from "./emulator-options.js";
+export type { EmulatorCredentialsMode } from "./emulator-options.js";
 export type { EmulatorEnvironment, EmulatorSdk } from "./emulator-environment.js";
 
 export type EmulatorSession = {
@@ -42,15 +47,30 @@ export type EmulatorSession = {
 };
 
 export type PersistentEmulatorSession = Omit<EmulatorSession, "containerId" | "stop"> & { name: string };
-export type EmulatorSessionExecOptions = Pick<RunWithEmulatorOptions, "shell" | "sdks" | "region" | "signal" | "stateDirectory">;
+export type EmulatorSessionExecOptions = Pick<RunWithEmulatorOptions, "shell" | "sdks" | "region" | "signal" | "stateDirectory" | "credentials">;
 export type EmulatorSessionInitCommand = {
   command: string;
   args?: string[];
   shell?: boolean;
   sdks?: EmulatorSdk[];
   region?: string;
+  credentials?: EmulatorCredentialsMode;
 };
 export type UpEmulatorSessionOptions = StartEmulatorOptions & { init?: EmulatorSessionInitCommand };
+
+async function createCommandEnvironment(
+  parentEnvironment: NodeJS.ProcessEnv,
+  emulatorEnvironment: EmulatorEnvironment,
+  options: ChildEnvironmentOptions & { credentials?: EmulatorCredentialsMode } = {},
+): Promise<NodeJS.ProcessEnv> {
+  const { credentials, ...environmentOptions } = options;
+  const credentialsMode = resolveEmulatorCredentialsMode(credentials);
+  const childEnvironment = createChildEnvironment(parentEnvironment, emulatorEnvironment, environmentOptions);
+  if (credentialsMode === "environment") {
+    Object.assign(childEnvironment, await readEmulatorCredentialEnvironment(emulatorEnvironment.AWS_SHARED_CREDENTIALS_FILE));
+  }
+  return childEnvironment;
+}
 
 const MANAGED_CONTAINER_LABEL = "io.github.c19yamamoto.awesome-emulator-cli.managed";
 const SESSION_CONTAINER_LABEL = "io.github.c19yamamoto.awesome-emulator-cli.session";
@@ -242,7 +262,11 @@ export async function upEmulatorSession(
   validateSessionName(name);
   const { init, ...emulatorOptions } = options;
   const initOptions = init
-    ? { sdks: normalizeEmulatorSdks(init.sdks), region: resolveAwsRegion(init.region) }
+    ? {
+      sdks: normalizeEmulatorSdks(init.sdks),
+      region: resolveAwsRegion(init.region),
+      credentials: resolveEmulatorCredentialsMode(init.credentials),
+    }
     : undefined;
   if (init && !init.command) throw new Error("An initialization command is required.");
   const stateDirectory = resolveEmulatorStateDirectory(emulatorOptions.stateDirectory);
@@ -256,7 +280,7 @@ export async function upEmulatorSession(
       [SESSION_CONTAINER_LABEL]: name,
     }, stateDirectory);
     if (init && initOptions) {
-      const childEnvironment = createChildEnvironment(process.env, emulator.environment, initOptions);
+      const childEnvironment = await createCommandEnvironment(process.env, emulator.environment, initOptions);
       const exitCode = await runCommand(init.command, init.args ?? [], childEnvironment, options.signal, init.shell ?? false, "stderr");
       if (exitCode !== 0) {
         throwIfAborted(options.signal);
@@ -334,6 +358,7 @@ export async function execEmulatorSession(
   if (!command) throw new Error("A command is required.");
   validateSessionName(name);
   const { signal, shell = false, sdks: requestedSdks = [], region, stateDirectory: requestedStateDirectory } = options;
+  const credentials = resolveEmulatorCredentialsMode(options.credentials);
   const childRegion = resolveAwsRegion(region);
   const sdks = normalizeEmulatorSdks(requestedSdks);
   const stateDirectory = resolveEmulatorStateDirectory(requestedStateDirectory);
@@ -353,7 +378,11 @@ export async function execEmulatorSession(
   }
 
   const emulator = createEmulatorConnectionSettings(session.port, stateDirectory);
-  const childEnvironment = createChildEnvironment(process.env, emulator.environment, { sdks, region: childRegion });
+  const childEnvironment = await createCommandEnvironment(process.env, emulator.environment, {
+    sdks,
+    region: childRegion,
+    credentials,
+  });
   return runCommand(command, args, childEnvironment, signal, shell);
 }
 
@@ -379,10 +408,15 @@ export async function downEmulatorSession(
 export async function runWithEmulator(command: string, args: string[] = [], options: RunWithEmulatorOptions = {}): Promise<number> {
   if (!command) throw new Error("A command is required.");
   const { shell = false, sdks: requestedSdks = [], region, ...emulatorOptions } = options;
+  const credentials = resolveEmulatorCredentialsMode(options.credentials);
   const childRegion = resolveAwsRegion(region);
   const sdks = normalizeEmulatorSdks(requestedSdks);
   return withEmulator(() => startEmulator(emulatorOptions), async (emulator) => {
-    const childEnvironment = createChildEnvironment(process.env, emulator.environment, { sdks, region: childRegion });
+    const childEnvironment = await createCommandEnvironment(process.env, emulator.environment, {
+      sdks,
+      region: childRegion,
+      credentials,
+    });
     return runCommand(command, args, childEnvironment, emulatorOptions.signal, shell);
   });
 }
