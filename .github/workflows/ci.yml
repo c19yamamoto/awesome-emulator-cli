@@ -43,6 +43,22 @@ jobs:
           node-version: 26
           cache: npm
       - run: npm ci
+      - id: emulator-image
+        name: Resolve emulator image tag
+        run: echo "tag=$(node scripts/resolve-emulator-image-tag.js)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4.3.0
+        id: emulator-image-cache
+        with:
+          path: ${{ runner.temp }}/aws-emulator-image.tar
+          key: emulator-image-${{ runner.os }}-${{ runner.arch }}-${{ steps.emulator-image.outputs.tag }}
+      - name: Load cached emulator image
+        if: steps.emulator-image-cache.outputs.cache-hit == 'true'
+        run: docker load --input "$RUNNER_TEMP/aws-emulator-image.tar"
       - run: npm run test:integration
         env:
           AWS_EMULATOR_INTEGRATION_TESTS: "1"
+      - name: Save emulator image for future runs
+        if: success() && steps.emulator-image-cache.outputs.cache-hit != 'true'
+        env:
+          IMAGE_TAG: ${{ steps.emulator-image.outputs.tag }}
+        run: docker save --output "$RUNNER_TEMP/aws-emulator-image.tar" "$IMAGE_TAG"
