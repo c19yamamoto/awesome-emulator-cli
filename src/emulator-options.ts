@@ -26,7 +26,7 @@ export type ResolvedEmulatorOptions = {
   startupTimeoutMs: number;
 };
 
-export const DEFAULT_VERSION = "1.0.531";
+export const DEFAULT_VERSION = "1.0.533";
 const DEFAULT_PORT = 9297;
 const DEFAULT_MEMORY = "2g";
 
