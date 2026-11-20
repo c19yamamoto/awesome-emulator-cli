@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.5.1](https://github.com/c19yamamoto/awesome-emulator-cli/compare/v0.5.0...v0.5.1) (2026-11-20)
+
+
+### Bug Fixes
+
+* **deps:** secure SDK smoke dependencies ([#48](https://github.com/c19yamamoto/awesome-emulator-cli/issues/48)) ([1f66193](https://github.com/c19yamamoto/awesome-emulator-cli/commit/1f66193ef285a8e74af8958a4e9717d90b1867a8))
+
+
+### Maintenance
+
+* **deps:** bump actions/cache from 4.3.0 to 6.1.0 in the all-github-actions group ([#51](https://github.com/c19yamamoto/awesome-emulator-cli/issues/51)) ([c7e8c59](https://github.com/c19yamamoto/awesome-emulator-cli/commit/c7e8c595259112980506b77b6e4e7882b33f8374))
+* **deps:** bump the all-sdk-smoke-gomod group in /examples/sdk-smoke/go with 2 updates ([#53](https://github.com/c19yamamoto/awesome-emulator-cli/issues/53)) ([56bf750](https://github.com/c19yamamoto/awesome-emulator-cli/commit/56bf75046943a0f4031f38ae3600db900d765496))
+* **deps:** bump the all-sdk-smoke-maven group in /examples/sdk-smoke/java with 2 updates ([#50](https://github.com/c19yamamoto/awesome-emulator-cli/issues/50)) ([c835e25](https://github.com/c19yamamoto/awesome-emulator-cli/commit/c835e25b20b220e545e2b9f116c79c796ca789a8))
+* **deps:** the all-sdk-smoke-nuget group with 1 update ([#52](https://github.com/c19yamamoto/awesome-emulator-cli/issues/52)) ([36fa55f](https://github.com/c19yamamoto/awesome-emulator-cli/commit/36fa55f5fdfc47a78472df01547e5a8ef8f3f0ff))
+
 ## [0.5.0](https://github.com/c19yamamoto/awesome-emulator-cli/compare/v0.4.0...v0.5.0) (2026-11-20)
 
 
