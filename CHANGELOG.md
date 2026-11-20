@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0](https://github.com/c19yamamoto/awesome-emulator-cli/compare/v0.1.2...v0.2.0) (2026-11-20)
+
+
+### Features
+
+* automate AWS Emulator version updates ([#17](https://github.com/c19yamamoto/awesome-emulator-cli/issues/17)) ([b6d0940](https://github.com/c19yamamoto/awesome-emulator-cli/commit/b6d094056c7319f6d3687d4abad50dfbeecb8d67))
+
 ## [0.1.2](https://github.com/c19yamamoto/awesome-emulator-cli/compare/v0.1.1...v0.1.2) (2026-11-19)
 
 
