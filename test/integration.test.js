@@ -48,10 +48,21 @@ test("keeps a named emulator session available across child commands", { skip: !
   const name = `integration-${randomUUID()}`;
   let started = false;
   try {
+    const initializer = [
+      "const fs = require('node:fs')",
+      "const https = require('node:https')",
+      "if (process.argv[1] !== 'seed-marker' || process.argv[2] !== 'seed-value' || !process.env.AWS_SHARED_CREDENTIALS_FILE || process.env.AWS_REGION !== 'ap-northeast-1' || process.env.AWS_DEFAULT_REGION !== 'ap-northeast-1') process.exit(1)",
+      "https.get(process.env.AWS_ENDPOINT_URL + '/__admin/health', { ca: fs.readFileSync(process.env.AWS_CA_BUNDLE) }, response => { let body = ''; response.setEncoding('utf8'); response.on('data', chunk => { body += chunk }); response.on('end', () => { if (response.statusCode !== 200 || body.trim() !== 'ok') process.exitCode = 1 }) }).on('error', () => { process.exitCode = 1 })",
+    ].join("; ");
     const session = await upEmulatorSession(name, {
       port: 0,
       telemetry: "off",
       startupTimeoutMs: 300_000,
+      init: {
+        command: process.execPath,
+        args: ["-e", initializer, "seed-marker", "seed-value"],
+        region: "ap-northeast-1",
+      },
     });
     started = true;
     assert.equal(session.name, name);
@@ -63,4 +74,15 @@ test("keeps a named emulator session available across child commands", { skip: !
   } finally {
     if (started) await downEmulatorSession(name);
   }
+});
+
+test("cleans up a persistent session when initialization fails", { skip: !enabled }, async () => {
+  const name = `integration-${randomUUID()}`;
+  await assert.rejects(upEmulatorSession(name, {
+    port: 0,
+    telemetry: "off",
+    startupTimeoutMs: 300_000,
+    init: { command: process.execPath, args: ["-e", "process.exit(17)"] },
+  }), /initialization command failed with exit code 17/);
+  await assert.rejects(downEmulatorSession(name), /was not found/);
 });

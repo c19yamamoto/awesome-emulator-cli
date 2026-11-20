@@ -21,14 +21,14 @@ type ParsedArgs =
 type CliValueOption = "version" | "port" | "telemetry" | "memory" | "region" | "session";
 type CliOptions = Pick<StartEmulatorOptions, "version" | "port" | "telemetry" | "memory">
   & Pick<RunWithEmulatorOptions, "region" | "sdks">
-  & { shell?: boolean; session?: string };
+  & { shell?: boolean; session?: string; init?: boolean };
 
 function usage() {
   console.log(`Usage:
   awesome-emulator prepare [--version <version>]
   awesome-emulator start [options]
   awesome-emulator run [options] [--region <region>] [--sdk <family>]... [--shell] -- <command> [args...]
-  awesome-emulator up --session <name> [options]
+  awesome-emulator up --session <name> [options] [--init [child options] -- <command> [args...]]
   awesome-emulator exec --session <name> [--region <region>] [--sdk <family>]... [--shell] -- <command> [args...]
   awesome-emulator down --session <name>
 
@@ -37,11 +37,12 @@ Options:
   -p, --port <port>           (start/run/up) Host port; 0 chooses an available port (default: 9297)
   -t, --telemetry <on|off>    (start/run/up) Telemetry setting (default: on)
       --memory <limit>        (start/run/up) Container memory limit (default: 2g)
-      --region <region>       (run/exec only) Default region for the child command (default: ${DEFAULT_AWS_REGION})
+      --region <region>       (run/exec/up --init) Default region for the child command (default: ${DEFAULT_AWS_REGION})
       --session <name>        (up/exec/down) Persistent emulator session name
-      --sdk <family>          (run/exec) Add SDK-specific TLS settings; repeatable
+      --sdk <family>          (run/exec/up --init) Add SDK-specific TLS settings; repeatable
                               (${SUPPORTED_EMULATOR_SDKS.join(", ")})
-      --shell                 (run/exec) Enable .cmd/.bat and built-ins; trusted values only
+      --shell                 (run/exec/up --init) Enable .cmd/.bat and built-ins; trusted values only
+      --init                  (up only) Run a command after the emulator becomes healthy
   -h, --help                  Show this help`);
 }
 
@@ -51,6 +52,7 @@ function parse(argv: string[]): ParsedArgs {
   const options: CliOptions = {};
   const commandArgs: string[] = [];
   let separator = false;
+  let initRequested = false;
   for (let index = 1; index < argv.length; index += 1) {
     const token = argv[index];
     if (separator) {
@@ -58,17 +60,25 @@ function parse(argv: string[]): ParsedArgs {
       continue;
     }
     if (token === "--") {
+      if (command === "up" && !initRequested) throw new Error("The up command accepts child arguments only after --init --.");
       separator = true;
       continue;
     }
     if (token === "-h" || token === "--help") return { help: true };
+    if (token === "--init") {
+      if (command !== "up") throw new Error("--init can only be used with the up command.");
+      if (initRequested) throw new Error("--init can only be specified once.");
+      initRequested = true;
+      options.init = true;
+      continue;
+    }
     if (token === "--shell") {
-      if (command !== "run" && command !== "exec") throw new Error("--shell can only be used with the run or exec command.");
+      if (command !== "run" && command !== "exec" && command !== "up") throw new Error("--shell can only be used with the run or exec command, or with up --init.");
       options.shell = true;
       continue;
     }
     if (token === "--sdk") {
-      if (command !== "run" && command !== "exec") throw new Error("--sdk can only be used with the run or exec command.");
+      if (command !== "run" && command !== "exec" && command !== "up") throw new Error("--sdk can only be used with the run or exec command, or with up --init.");
       const value = argv[index + 1];
       if (!value || value.startsWith("--")) throw new Error("Missing value for --sdk");
       if (!(SUPPORTED_EMULATOR_SDKS as readonly string[]).includes(value)) {
@@ -89,8 +99,8 @@ function parse(argv: string[]): ParsedArgs {
     };
     const key = optionNames[token];
     if (!key) throw new Error(`Unknown option: ${token}`);
-    if (key === "region" && command !== "run" && command !== "exec") {
-      throw new Error("--region can only be used with the run or exec command.");
+    if (key === "region" && command !== "run" && command !== "exec" && command !== "up") {
+      throw new Error("--region can only be used with the run or exec command, or with up --init.");
     }
     if (key === "session" && command !== "up" && command !== "exec" && command !== "down") {
       throw new Error("--session can only be used with the up, exec, or down command.");
@@ -108,6 +118,14 @@ function parse(argv: string[]): ParsedArgs {
   }
   if ((command === "up" || command === "exec" || command === "down") && !options.session) {
     throw new Error(`--session is required with the ${command} command.`);
+  }
+  if (command === "up") {
+    if (initRequested && (!separator || commandArgs.length === 0)) {
+      throw new Error("Usage: awesome-emulator up --session <name> [options] --init -- <command> [args...]");
+    }
+    if (!initRequested && (separator || options.region || options.sdks || options.shell)) {
+      throw new Error("Child command options and arguments for up require --init.");
+    }
   }
   return { help: false, command, options, commandArgs };
 }
@@ -143,13 +161,20 @@ async function main(signal: AbortSignal): Promise<number> {
   }
 
   if (parsed.command === "up") {
-    if (parsed.commandArgs.length > 0) throw new Error("The up command does not accept child command arguments.");
+    const [initCommand, ...initArgs] = parsed.commandArgs;
     const session = await upEmulatorSession(parsed.options.session!, {
       version: parsed.options.version,
       port: parsed.options.port,
       telemetry: parsed.options.telemetry,
       memory: parsed.options.memory,
       signal,
+      init: parsed.options.init ? {
+        command: initCommand!,
+        args: initArgs,
+        region: parsed.options.region,
+        sdks: parsed.options.sdks,
+        shell: parsed.options.shell,
+      } : undefined,
     });
     console.log(JSON.stringify(session, null, 2));
     return 0;

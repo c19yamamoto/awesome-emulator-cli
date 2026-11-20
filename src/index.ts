@@ -12,6 +12,7 @@ import {
   normalizeEmulatorSdks,
   resolveAwsRegion,
   type EmulatorEnvironment,
+  type EmulatorSdk,
 } from "./emulator-environment.js";
 import { ensureEmulatorImage, getArchitecture, type EmulatorArchitecture } from "./emulator-image.js";
 import { isSessionOwnerRunning, readSession, removeSession, reserveSession, validateSessionName, writeRunningSession, type RunningSessionRecord } from "./session-store.js";
@@ -42,6 +43,14 @@ export type EmulatorSession = {
 
 export type PersistentEmulatorSession = Omit<EmulatorSession, "containerId" | "stop"> & { name: string };
 export type EmulatorSessionExecOptions = Pick<RunWithEmulatorOptions, "shell" | "sdks" | "region" | "signal">;
+export type EmulatorSessionInitCommand = {
+  command: string;
+  args?: string[];
+  shell?: boolean;
+  sdks?: EmulatorSdk[];
+  region?: string;
+};
+export type UpEmulatorSessionOptions = StartEmulatorOptions & { init?: EmulatorSessionInitCommand };
 
 const MANAGED_CONTAINER_LABEL = "io.github.c19yamamoto.awesome-emulator-cli.managed";
 const SESSION_CONTAINER_LABEL = "io.github.c19yamamoto.awesome-emulator-cli.session";
@@ -232,19 +241,31 @@ export async function startEmulator(options: StartEmulatorOptions = {}): Promise
 
 export async function upEmulatorSession(
   name: string,
-  options: StartEmulatorOptions = {},
+  options: UpEmulatorSessionOptions = {},
 ): Promise<PersistentEmulatorSession> {
   validateSessionName(name);
+  const { init, ...emulatorOptions } = options;
+  const initOptions = init
+    ? { sdks: normalizeEmulatorSdks(init.sdks), region: resolveAwsRegion(init.region) }
+    : undefined;
+  if (init && !init.command) throw new Error("An initialization command is required.");
   const stateDirectory = emulatorStateDirectory();
   const containerName = `awesome-emulator-cli-session-${randomBytes(4).toString("hex")}-${name}`;
   await reserveSession(stateDirectory, name, containerName);
 
   let emulator: EmulatorSession | undefined;
   try {
-    emulator = await startEmulatorWithIdentity(options, containerName, {
+    emulator = await startEmulatorWithIdentity(emulatorOptions, containerName, {
       [MANAGED_CONTAINER_LABEL]: "true",
       [SESSION_CONTAINER_LABEL]: name,
     });
+    if (init && initOptions) {
+      const childEnvironment = createChildEnvironment(process.env, emulator.environment, initOptions);
+      const exitCode = await runCommand(init.command, init.args ?? [], childEnvironment, options.signal, init.shell ?? false);
+      if (exitCode !== 0) {
+        throw new Error(`Emulator session "${name}" initialization command failed with exit code ${exitCode}.`);
+      }
+    }
     const record: RunningSessionRecord = {
       schemaVersion: 1,
       name,

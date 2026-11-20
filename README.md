@@ -113,6 +113,16 @@ In CI, put the final `down` command in an always-run cleanup step so the contain
 
 Persistent sessions use `ps` on Unix or Windows PowerShell on Windows to distinguish an active startup from an abandoned session record.
 
+Run a one-time seed or setup command after the emulator becomes healthy with `--init`. The initializer receives the same emulator environment as `exec`; a non-zero exit makes `up` fail and stops the session:
+
+```sh
+npx awesome-emulator up --session ci-tests --init -- node scripts/seed-emulator.js
+npx awesome-emulator exec --session ci-tests -- npm test
+npx awesome-emulator down --session ci-tests
+```
+
+Initializer arguments are passed directly without a shell by default. Use `--shell` before `--` only when you need shell behavior and trust all command values.
+
 ## Use from Node.js
 
 Use the API when your test harness needs to control the emulator lifecycle directly:
