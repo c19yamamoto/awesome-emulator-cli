@@ -22,3 +22,69 @@ updates:
       all-npm:
         patterns:
           - "*"
+  - package-ecosystem: "npm"
+    directory: "/examples/sdk-smoke/javascript"
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+      time: "10:00"
+      timezone: "Asia/Tokyo"
+    groups:
+      all-sdk-smoke-npm:
+        patterns:
+          - "*"
+  - package-ecosystem: "pip"
+    directory: "/examples/sdk-smoke/python"
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+      time: "10:00"
+      timezone: "Asia/Tokyo"
+    groups:
+      all-sdk-smoke-pip:
+        patterns:
+          - "*"
+  - package-ecosystem: "maven"
+    directory: "/examples/sdk-smoke/java"
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+      time: "10:00"
+      timezone: "Asia/Tokyo"
+    groups:
+      all-sdk-smoke-maven:
+        patterns:
+          - "*"
+  - package-ecosystem: "gomod"
+    directory: "/examples/sdk-smoke/go"
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+      time: "10:00"
+      timezone: "Asia/Tokyo"
+    groups:
+      all-sdk-smoke-gomod:
+        patterns:
+          - "*"
+  - package-ecosystem: "cargo"
+    directory: "/examples/sdk-smoke/rust"
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+      time: "10:00"
+      timezone: "Asia/Tokyo"
+    groups:
+      all-sdk-smoke-cargo:
+        patterns:
+          - "*"
+  - package-ecosystem: "nuget"
+    directory: "/examples/sdk-smoke/dotnet"
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+      time: "10:00"
+      timezone: "Asia/Tokyo"
+    groups:
+      all-sdk-smoke-nuget:
+        patterns:
+          - "*"
