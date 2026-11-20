@@ -4,7 +4,7 @@
   <img src="./assets/social-preview-v2.png" alt="Awesome Emulator CLI — Local emulator testing for AWS SDKs" width="100%">
 </p>
 
-A Node.js CLI that manages AWS Emulator in Docker and passes its connection settings to your test command. Your tests can use any AWS SDK language; they do not need to run in Node.js.
+A Node.js CLI that manages AWS Emulator in Docker and passes its connection settings to your test command. Your tests can use any AWS SDK language; they do not need to run in Node.js. The CLI itself has no production npm dependencies.
 
 This is an independent project and is not affiliated with or endorsed by Amazon Web Services.
 
