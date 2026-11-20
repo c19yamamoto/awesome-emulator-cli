@@ -1,7 +1,10 @@
 import type { EmulatorSdk } from "./emulator-environment.js";
+import os from "node:os";
+import path from "node:path";
 
 export type StartEmulatorOptions = {
   version?: string;
+  stateDirectory?: string;
   port?: number | string;
   telemetry?: string;
   memory?: string;
@@ -31,6 +34,19 @@ export type ResolvedEmulatorOptions = {
   memory: string;
   startupTimeoutMs: number;
 };
+
+export function resolveEmulatorStateDirectory(
+  value: string | undefined,
+  environment: NodeJS.ProcessEnv = process.env,
+  homeDirectory = os.homedir(),
+  workingDirectory = process.cwd(),
+): string {
+  const configuredDirectory = value ?? environment.AWS_EMULATOR_STATE_DIR;
+  if (configuredDirectory !== undefined && configuredDirectory.trim().length === 0) {
+    throw new Error("Emulator state directory must not be empty.");
+  }
+  return path.resolve(workingDirectory, configuredDirectory ?? path.join(homeDirectory, ".aws", "emulator"));
+}
 
 export const DEFAULT_VERSION = "1.0.533";
 const DEFAULT_PORT = 9297;
