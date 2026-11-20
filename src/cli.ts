@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { runWithEmulator, startEmulator, type StartEmulatorOptions } from "./index.js";
+import { prepareEmulatorImage, runWithEmulator, startEmulator, type StartEmulatorOptions } from "./index.js";
 import { DEFAULT_VERSION } from "./emulator-options.js";
 import { FORWARDED_SIGNALS, getSignalExitCode, type ForwardedSignal } from "./signals.js";
 
@@ -13,14 +13,15 @@ type CliOptions = Pick<StartEmulatorOptions, CliValueOption> & { shell?: boolean
 
 function usage() {
   console.log(`Usage:
+  awesome-emulator prepare [--version <version>]
   awesome-emulator start [options]
   awesome-emulator run [options] [--shell] -- <command> [args...]
 
 Options:
   -v, --version <version>     AWS Emulator version (default: ${DEFAULT_VERSION})
-  -p, --port <port>           Host port; 0 chooses an available port (default: 9297)
-  -t, --telemetry <on|off>    Telemetry setting (default: on)
-      --memory <limit>        Container memory limit (default: 2g)
+  -p, --port <port>           (start/run) Host port; 0 chooses an available port (default: 9297)
+  -t, --telemetry <on|off>    (start/run) Telemetry setting (default: on)
+      --memory <limit>        (start/run) Container memory limit (default: 2g)
       --shell                 (run only) Enable .cmd/.bat and built-ins; trusted values only
   -h, --help                  Show this help`);
 }
@@ -55,6 +56,9 @@ function parse(argv: string[]): ParsedArgs {
     };
     const key = optionNames[token];
     if (!key) throw new Error(`Unknown option: ${token}`);
+    if (command === "prepare" && key !== "version") {
+      throw new Error(`${token} can only be used with the start or run command.`);
+    }
     const value = argv[index + 1];
     if (!value || value.startsWith("--")) throw new Error(`Missing value for ${token}`);
     options[key] = value;
@@ -91,6 +95,12 @@ async function main(signal: AbortSignal): Promise<number> {
     const [program, ...args] = parsed.commandArgs;
     if (!program) throw new Error("Usage: awesome-emulator run [options] -- <command> [args...]");
     return runWithEmulator(program, args, { ...parsed.options, signal });
+  }
+
+  if (parsed.command === "prepare") {
+    const image = await prepareEmulatorImage({ version: parsed.options.version, signal });
+    console.log(`AWS Emulator image is ready: ${image}`);
+    return 0;
   }
 
   if (parsed.command === "start") {

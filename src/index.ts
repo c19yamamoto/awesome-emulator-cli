@@ -8,10 +8,16 @@ import { createRetryableStop, startContainer, stopContainer, withEmulator } from
 import { docker, throwIfAborted } from "./docker.js";
 import { createChildEnvironment, createEmulatorConnectionSettings, type EmulatorEnvironment } from "./emulator-environment.js";
 import { ensureEmulatorImage, getArchitecture, type EmulatorArchitecture } from "./emulator-image.js";
-import { resolveEmulatorOptions, type RunWithEmulatorOptions, type StartEmulatorOptions } from "./emulator-options.js";
+import {
+  resolveEmulatorOptions,
+  resolveEmulatorVersion,
+  type PrepareEmulatorOptions,
+  type RunWithEmulatorOptions,
+  type StartEmulatorOptions,
+} from "./emulator-options.js";
 import { runCommand } from "./process.js";
 
-export type { RunWithEmulatorOptions, StartEmulatorOptions } from "./emulator-options.js";
+export type { PrepareEmulatorOptions, RunWithEmulatorOptions, StartEmulatorOptions } from "./emulator-options.js";
 export type { EmulatorEnvironment } from "./emulator-environment.js";
 
 export type EmulatorSession = {
@@ -26,6 +32,13 @@ export type EmulatorSession = {
   containerId: string;
   stop: () => Promise<void>;
 };
+
+/** Build or reuse the selected AWS Emulator Docker image without starting a container. */
+export async function prepareEmulatorImage(options: PrepareEmulatorOptions = {}): Promise<string> {
+  throwIfAborted(options.signal);
+  const version = resolveEmulatorVersion(options.version);
+  return ensureEmulatorImage(version, getArchitecture(), options.signal);
+}
 
 async function getAvailablePort(): Promise<number> {
   const server = net.createServer();
