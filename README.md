@@ -16,6 +16,14 @@ This is an independent project and is not affiliated with or endorsed by Amazon 
 
 On first start, Docker downloads the selected AWS Emulator RPM and its signature, verifies the signature, and builds a local image. Later starts reuse the image for that version and architecture.
 
+Prepare the image ahead of the first test run with:
+
+```sh
+npx awesome-emulator prepare
+```
+
+This builds or reuses the same versioned image as `start` and `run`, without starting a container or creating emulator state files. It can be run during CI setup or alongside other independent setup work so image construction does not delay the first test command. Pass `--version` or set `AWS_EMULATOR_VERSION` when you want to prepare a specific release.
+
 ## Run a test command
 
 ```sh
