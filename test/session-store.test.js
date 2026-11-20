@@ -22,8 +22,17 @@ test("reserves a session with restrictive permissions and rejects duplicate name
   assert.equal(record.name, "ci-tests");
   assert.equal(typeof record.ownerStartMarker, "string");
   assert.ok(record.ownerStartMarker.length > 0);
-  assert.equal(isSessionOwnerRunning(record), true);
-  assert.equal(isSessionOwnerRunning({ ...record, ownerStartMarker: "different-process-start" }), false);
+  const originalTimeZone = process.env.TZ;
+  try {
+    process.env.TZ = "Pacific/Honolulu";
+    assert.equal(isSessionOwnerRunning(record), true);
+    process.env.TZ = "Asia/Tokyo";
+    assert.equal(isSessionOwnerRunning(record), true);
+    assert.equal(isSessionOwnerRunning({ ...record, ownerStartMarker: "different-process-start" }), false);
+  } finally {
+    if (originalTimeZone === undefined) delete process.env.TZ;
+    else process.env.TZ = originalTimeZone;
+  }
   if (process.platform !== "win32") {
     assert.equal((await stat(filename)).mode & 0o777, 0o600);
     assert.equal((await stat(path.dirname(filename))).mode & 0o777, 0o700);

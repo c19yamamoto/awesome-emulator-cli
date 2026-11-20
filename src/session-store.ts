@@ -42,7 +42,7 @@ function getProcessStartMarker(pid: number): string | undefined {
     : ["-o", "lstart=", "-p", String(pid)];
   const result = spawnSync(command, args, {
     encoding: "utf8",
-    env: { ...process.env, LC_ALL: "C" },
+    env: { ...process.env, LC_ALL: "C", TZ: "UTC" },
     timeout: 2000,
     windowsHide: true,
   });
