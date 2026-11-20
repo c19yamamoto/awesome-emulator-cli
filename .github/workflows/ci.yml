@@ -46,11 +46,14 @@ jobs:
       - id: emulator-image
         name: Resolve emulator image tag
         run: echo "tag=$(node scripts/resolve-emulator-image-tag.js)" >> "$GITHUB_OUTPUT"
+      - id: emulator-cache-period
+        name: Set weekly image cache period
+        run: echo "week=$(date -u +%G-W%V)" >> "$GITHUB_OUTPUT"
       - uses: actions/cache@v4.3.0
         id: emulator-image-cache
         with:
           path: ${{ runner.temp }}/aws-emulator-image.tar
-          key: emulator-image-${{ runner.os }}-${{ runner.arch }}-${{ steps.emulator-image.outputs.tag }}
+          key: emulator-image-${{ runner.os }}-${{ runner.arch }}-${{ steps.emulator-image.outputs.tag }}-${{ steps.emulator-cache-period.outputs.week }}
       - name: Load cached emulator image
         if: steps.emulator-image-cache.outputs.cache-hit == 'true'
         run: docker load --input "$RUNNER_TEMP/aws-emulator-image.tar"
