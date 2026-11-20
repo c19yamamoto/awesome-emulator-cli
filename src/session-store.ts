@@ -1,4 +1,5 @@
 import { chmod, mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import path from "node:path";
 
@@ -10,6 +11,7 @@ export type StartingSessionRecord = {
   state: "starting";
   containerName: string;
   ownerPid: number;
+  ownerStartMarker?: string;
 };
 
 export type RunningSessionRecord = {
@@ -31,6 +33,42 @@ export function validateSessionName(name: string): string {
   return name;
 }
 
+function getProcessStartMarker(pid: number): string | undefined {
+  if (!Number.isSafeInteger(pid) || pid <= 0) return undefined;
+  const isWindows = process.platform === "win32";
+  const command = isWindows ? "powershell.exe" : "ps";
+  const args = isWindows
+    ? ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", `[System.Diagnostics.Process]::GetProcessById(${pid}).StartTime.ToUniversalTime().ToString('o')`]
+    : ["-o", "lstart=", "-p", String(pid)];
+  const result = spawnSync(command, args, {
+    encoding: "utf8",
+    env: { ...process.env, LC_ALL: "C" },
+    timeout: 2000,
+    windowsHide: true,
+  });
+  if (result.error || result.status !== 0) return undefined;
+  return result.stdout.trim() || undefined;
+}
+
+function isProcessRunning(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "EPERM") return true;
+    if (error instanceof Error && "code" in error && error.code === "ESRCH") return false;
+    throw error;
+  }
+}
+
+export function isSessionOwnerRunning(record: StartingSessionRecord): boolean {
+  const currentStartMarker = getProcessStartMarker(record.ownerPid);
+  if (record.ownerStartMarker && currentStartMarker) {
+    return record.ownerStartMarker === currentStartMarker;
+  }
+  return isProcessRunning(record.ownerPid);
+}
+
 function sessionPath(stateDirectory: string, name: string): string {
   return path.join(stateDirectory, "sessions", `${validateSessionName(name)}.json`);
 }
@@ -50,6 +88,7 @@ export async function reserveSession(
     state: "starting",
     containerName,
     ownerPid: process.pid,
+    ownerStartMarker: getProcessStartMarker(process.pid),
   };
   try {
     await writeFile(filename, `${JSON.stringify(record)}\n`, { flag: "wx", mode: 0o600 });
@@ -112,7 +151,11 @@ function isSessionRecord(value: unknown, expectedName: string): value is Session
   const record = value as Record<string, unknown>;
   if (record.schemaVersion !== 1 || record.name !== expectedName || typeof record.containerName !== "string") return false;
   if (!record.containerName.startsWith("awesome-emulator-cli-session-") || !record.containerName.endsWith(`-${record.name}`)) return false;
-  if (record.state === "starting") return Number.isSafeInteger(record.ownerPid) && Number(record.ownerPid) > 0;
+  if (record.state === "starting") {
+    return Number.isSafeInteger(record.ownerPid)
+      && Number(record.ownerPid) > 0
+      && (record.ownerStartMarker === undefined || (typeof record.ownerStartMarker === "string" && record.ownerStartMarker.length > 0));
+  }
   if (record.state !== "running") return false;
   return typeof record.containerId === "string"
     && /^[a-f0-9]{12,64}$/i.test(record.containerId)

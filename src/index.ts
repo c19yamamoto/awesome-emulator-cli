@@ -14,7 +14,7 @@ import {
   type EmulatorEnvironment,
 } from "./emulator-environment.js";
 import { ensureEmulatorImage, getArchitecture, type EmulatorArchitecture } from "./emulator-image.js";
-import { readSession, removeSession, reserveSession, validateSessionName, writeRunningSession, type RunningSessionRecord } from "./session-store.js";
+import { isSessionOwnerRunning, readSession, removeSession, reserveSession, validateSessionName, writeRunningSession, type RunningSessionRecord } from "./session-store.js";
 import {
   resolveEmulatorOptions,
   resolveEmulatorVersion,
@@ -307,17 +307,6 @@ async function inspectSessionContainer(name: string, containerName: string): Pro
   return { containerId, running: running === "true" };
 }
 
-function isProcessRunning(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    if (error instanceof Error && "code" in error && error.code === "EPERM") return true;
-    if (error instanceof Error && "code" in error && error.code === "ESRCH") return false;
-    throw error;
-  }
-}
-
 export async function execEmulatorSession(
   name: string,
   command: string,
@@ -354,7 +343,7 @@ export async function downEmulatorSession(name: string): Promise<void> {
   validateSessionName(name);
   const stateDirectory = emulatorStateDirectory();
   const session = await readSession(stateDirectory, name);
-  if (session.state === "starting" && isProcessRunning(session.ownerPid)) {
+  if (session.state === "starting" && isSessionOwnerRunning(session)) {
     throw new Error(`Emulator session "${name}" is still starting. Retry after "awesome-emulator up" finishes.`);
   }
 

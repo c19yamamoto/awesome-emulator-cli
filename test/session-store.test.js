@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { readSession, removeSession, reserveSession, validateSessionName, writeRunningSession } from "../dist/session-store.js";
+import { isSessionOwnerRunning, readSession, removeSession, reserveSession, validateSessionName, writeRunningSession } from "../dist/session-store.js";
 
 test("validates session names before using them as file names", () => {
   assert.equal(validateSessionName("ci-tests-1"), "ci-tests-1");
@@ -20,6 +20,10 @@ test("reserves a session with restrictive permissions and rejects duplicate name
   const record = JSON.parse(await readFile(filename, "utf8"));
   assert.equal(record.state, "starting");
   assert.equal(record.name, "ci-tests");
+  assert.equal(isSessionOwnerRunning(record), true);
+  if (record.ownerStartMarker) {
+    assert.equal(isSessionOwnerRunning({ ...record, ownerStartMarker: "different-process-start" }), false);
+  }
   if (process.platform !== "win32") {
     assert.equal((await stat(filename)).mode & 0o777, 0o600);
     assert.equal((await stat(path.dirname(filename))).mode & 0o777, 0o700);
