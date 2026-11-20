@@ -32,11 +32,11 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git switch --create "$BRANCH"
           git add src/emulator-options.ts
-          git commit -m "chore: update default AWS Emulator to $VERSION" -m "Release-As: $RELEASE_AS"
+          title="chore(emulator-version): update AWS Emulator to v$VERSION"
+          git commit -m "$title" -m "Release-As: $RELEASE_AS"
           git push --force origin "HEAD:refs/heads/$BRANCH"
 
-          title="chore: update default AWS Emulator to $VERSION"
-          body="Updates the wrapper's default AWS Emulator version to $VERSION. CI validates the new version before the wrapper release. The branch commit carries a Release-As footer so Release Please proposes the next minor wrapper release ($RELEASE_AS). Preserve the footer in the squash commit body.
+          body="Updates the wrapper's default AWS Emulator version to v$VERSION. CI validates the new version before the wrapper release. Preserve the Release-As footer when squash-merging to request the next minor wrapper release ($RELEASE_AS).
 
 Release-As: $RELEASE_AS"
           pr_number="$(gh pr list --state open --head "$GITHUB_REPOSITORY_OWNER:$BRANCH" --json number --jq '.[0].number')"
