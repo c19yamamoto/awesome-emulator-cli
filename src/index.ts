@@ -14,6 +14,7 @@ import {
   type EmulatorEnvironment,
 } from "./emulator-environment.js";
 import { ensureEmulatorImage, getArchitecture, type EmulatorArchitecture } from "./emulator-image.js";
+import { readSession, removeSession, reserveSession, validateSessionName, writeRunningSession, type RunningSessionRecord } from "./session-store.js";
 import {
   resolveEmulatorOptions,
   resolveEmulatorVersion,
@@ -38,6 +39,16 @@ export type EmulatorSession = {
   containerId: string;
   stop: () => Promise<void>;
 };
+
+export type PersistentEmulatorSession = Omit<EmulatorSession, "containerId" | "stop"> & { name: string };
+export type EmulatorSessionExecOptions = Pick<RunWithEmulatorOptions, "shell" | "sdks" | "region" | "signal">;
+
+const MANAGED_CONTAINER_LABEL = "io.github.c19yamamoto.awesome-emulator-cli.managed";
+const SESSION_CONTAINER_LABEL = "io.github.c19yamamoto.awesome-emulator-cli.session";
+
+function emulatorStateDirectory(): string {
+  return path.join(os.homedir(), ".aws", "emulator");
+}
 
 /** Build or reuse the selected AWS Emulator Docker image without starting a container. */
 export async function prepareEmulatorImage(options: PrepareEmulatorOptions = {}): Promise<string> {
@@ -85,6 +96,7 @@ type ContainerRunConfiguration = {
   architecture: EmulatorArchitecture;
   containerName: string;
   image: string;
+  labels: Record<string, string>;
   memory: string;
   port: number;
   stateDirectory: string;
@@ -95,6 +107,7 @@ function createContainerRunArguments({
   architecture,
   containerName,
   image,
+  labels,
   memory,
   port,
   stateDirectory,
@@ -105,11 +118,13 @@ function createContainerRunArguments({
     && typeof process.getgid === "function"
     ? ["--user", `${process.getuid()}:${process.getgid()}`]
     : [];
+  const dockerLabels = Object.entries(labels).flatMap(([key, value]) => ["--label", `${key}=${value}`]);
 
   return [
     "run", "--detach",
     "--platform", `linux/${architecture.docker}`,
     ...hostUser,
+    ...dockerLabels,
     "--memory", memory,
     "--memory-swap", memory,
     "--publish", `127.0.0.1:${port}:${port}`,
@@ -158,22 +173,26 @@ async function waitUntilHealthy(containerId: string, port: number, stateDirector
  * The returned object includes SDK environment variables and an idempotent
  * stop() function. Port 0 asks the wrapper to choose an available local port.
  */
-export async function startEmulator(options: StartEmulatorOptions = {}): Promise<EmulatorSession> {
+async function startEmulatorWithIdentity(
+  options: StartEmulatorOptions,
+  containerName: string,
+  labels: Record<string, string>,
+): Promise<EmulatorSession> {
   throwIfAborted(options.signal);
   const { version, requestedPort, telemetry, memory, startupTimeoutMs } = resolveEmulatorOptions(options);
   const port = requestedPort === 0 ? await getAvailablePort() : requestedPort;
   throwIfAborted(options.signal);
   const architecture = getArchitecture();
-  const stateDirectory = path.join(os.homedir(), ".aws", "emulator");
+  const stateDirectory = emulatorStateDirectory();
   await mkdir(stateDirectory, { recursive: true, mode: 0o700 });
 
   const image = await ensureEmulatorImage(version, architecture, options.signal);
   throwIfAborted(options.signal);
-  const containerName = `awesome-emulator-cli-${process.pid}-${randomBytes(4).toString("hex")}`;
   const runArguments = createContainerRunArguments({
     architecture,
     containerName,
     image,
+    labels,
     memory,
     port,
     stateDirectory,
@@ -204,6 +223,144 @@ export async function startEmulator(options: StartEmulatorOptions = {}): Promise
     containerId: runningContainerId,
     stop,
   };
+}
+
+export async function startEmulator(options: StartEmulatorOptions = {}): Promise<EmulatorSession> {
+  const containerName = `awesome-emulator-cli-${process.pid}-${randomBytes(4).toString("hex")}`;
+  return startEmulatorWithIdentity(options, containerName, { [MANAGED_CONTAINER_LABEL]: "true" });
+}
+
+export async function upEmulatorSession(
+  name: string,
+  options: StartEmulatorOptions = {},
+): Promise<PersistentEmulatorSession> {
+  validateSessionName(name);
+  const stateDirectory = emulatorStateDirectory();
+  const containerName = `awesome-emulator-cli-session-${randomBytes(4).toString("hex")}-${name}`;
+  await reserveSession(stateDirectory, name, containerName);
+
+  let emulator: EmulatorSession | undefined;
+  try {
+    emulator = await startEmulatorWithIdentity(options, containerName, {
+      [MANAGED_CONTAINER_LABEL]: "true",
+      [SESSION_CONTAINER_LABEL]: name,
+    });
+    const record: RunningSessionRecord = {
+      schemaVersion: 1,
+      name,
+      state: "running",
+      containerName,
+      containerId: emulator.containerId,
+      version: emulator.version,
+      port: emulator.port,
+    };
+    await writeRunningSession(stateDirectory, record);
+    throwIfAborted(options.signal);
+    const { containerId: _containerId, stop: _stop, ...publicSession } = emulator;
+    return { name, ...publicSession };
+  } catch (error) {
+    const cleanupErrors: unknown[] = [];
+    if (emulator) {
+      try {
+        await emulator.stop();
+      } catch (cleanupError) {
+        cleanupErrors.push(cleanupError);
+      }
+    }
+    if (!(error instanceof AggregateError) && cleanupErrors.length === 0) {
+      try {
+        await removeSession(stateDirectory, name);
+      } catch (cleanupError) {
+        cleanupErrors.push(cleanupError);
+      }
+    }
+    if (cleanupErrors.length > 0) {
+      throw new AggregateError([error, ...cleanupErrors], `Failed to start emulator session "${name}" and clean up its state.`);
+    }
+    throw error;
+  }
+}
+
+type InspectedSessionContainer = { containerId: string; running: boolean };
+
+async function inspectSessionContainer(name: string, containerName: string): Promise<InspectedSessionContainer | undefined> {
+  let details: string;
+  try {
+    details = await docker([
+      "inspect",
+      "--format",
+      `{{.Id}}|{{.State.Running}}|{{index .Config.Labels "${MANAGED_CONTAINER_LABEL}"}}|{{index .Config.Labels "${SESSION_CONTAINER_LABEL}"}}`,
+      containerName,
+    ], { capture: true });
+  } catch (error) {
+    if (error instanceof Error && /no such (?:container|object)/i.test(error.message)) return undefined;
+    throw error;
+  }
+
+  const [containerId, running, managed, sessionName] = details.split("|");
+  if (managed !== "true" || sessionName !== name) {
+    throw new Error(`Docker container "${containerName}" is not owned by emulator session "${name}".`);
+  }
+  if (!containerId || !/^[a-f0-9]{12,64}$/i.test(containerId)) {
+    throw new Error(`Docker returned invalid session details for "${name}".`);
+  }
+  return { containerId, running: running === "true" };
+}
+
+function isProcessRunning(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "EPERM") return true;
+    if (error instanceof Error && "code" in error && error.code === "ESRCH") return false;
+    throw error;
+  }
+}
+
+export async function execEmulatorSession(
+  name: string,
+  command: string,
+  args: string[] = [],
+  options: EmulatorSessionExecOptions = {},
+): Promise<number> {
+  if (!command) throw new Error("A command is required.");
+  validateSessionName(name);
+  const { signal, shell = false, sdks: requestedSdks = [], region } = options;
+  const childRegion = resolveAwsRegion(region);
+  const sdks = normalizeEmulatorSdks(requestedSdks);
+  const stateDirectory = emulatorStateDirectory();
+  const session = await readSession(stateDirectory, name);
+  if (session.state !== "running") {
+    throw new Error(`Emulator session "${name}" is still starting. Wait for "awesome-emulator up" to finish before running commands.`);
+  }
+  const container = await inspectSessionContainer(name, session.containerName);
+  if (!container) {
+    throw new Error(`Emulator session "${name}" is stale. Run "awesome-emulator down --session ${name}" to remove it.`);
+  }
+  if (container.containerId !== session.containerId) {
+    throw new Error(`Emulator session "${name}" no longer matches its Docker container. Run "awesome-emulator down --session ${name}" to remove it.`);
+  }
+  if (!container.running) {
+    throw new Error(`Emulator session "${name}" is not running. Run "awesome-emulator down --session ${name}" to remove it.`);
+  }
+
+  const emulator = createEmulatorConnectionSettings(session.port, stateDirectory);
+  const childEnvironment = createChildEnvironment(process.env, emulator.environment, { sdks, region: childRegion });
+  return runCommand(command, args, childEnvironment, signal, shell);
+}
+
+export async function downEmulatorSession(name: string): Promise<void> {
+  validateSessionName(name);
+  const stateDirectory = emulatorStateDirectory();
+  const session = await readSession(stateDirectory, name);
+  if (session.state === "starting" && isProcessRunning(session.ownerPid)) {
+    throw new Error(`Emulator session "${name}" is still starting. Retry after "awesome-emulator up" finishes.`);
+  }
+
+  const container = await inspectSessionContainer(name, session.containerName);
+  if (container) await stopContainer(container.containerId);
+  await removeSession(stateDirectory, name);
 }
 
 /**
