@@ -21,25 +21,28 @@ jobs:
       - name: Check the latest upstream release
         id: update
         run: node scripts/update-emulator-version.js
-      - name: Open or refresh a draft pull request
+      - name: Open or refresh a pull request
         if: steps.update.outputs.updated == 'true'
         env:
           BRANCH: update-aws-emulator-version
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.update.outputs.version }}
+          RELEASE_AS: ${{ steps.update.outputs.release_as }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git switch --create "$BRANCH"
           git add src/emulator-options.ts
           title="chore(emulator-version): update AWS Emulator to v$VERSION"
-          git commit -m "$title"
+          git commit -m "$title" -m "Release-As: $RELEASE_AS"
           git push --force origin "HEAD:refs/heads/$BRANCH"
 
-          body="Updates the wrapper's default AWS Emulator version to v$VERSION. CI validates the new version before the wrapper release."
+          body="Updates the wrapper's default AWS Emulator version to v$VERSION. CI validates the new version before the wrapper release. Preserve the Release-As footer when squash-merging to request the next minor wrapper release ($RELEASE_AS).
+
+Release-As: $RELEASE_AS"
           pr_number="$(gh pr list --state open --head "$GITHUB_REPOSITORY_OWNER:$BRANCH" --json number --jq '.[0].number')"
           if [ -n "$pr_number" ]; then
             gh pr edit "$pr_number" --title "$title" --body "$body"
           else
-            gh pr create --draft --base main --head "$BRANCH" --title "$title" --body "$body"
+            gh pr create --base main --head "$BRANCH" --title "$title" --body "$body"
           fi
