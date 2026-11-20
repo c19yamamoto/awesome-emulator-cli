@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.3.0](https://github.com/c19yamamoto/awesome-emulator-cli/compare/v0.2.0...v0.3.0) (2026-11-20)
+
+
+### Features
+
+* add emulator image preparation command ([#30](https://github.com/c19yamamoto/awesome-emulator-cli/issues/30)) ([37248ea](https://github.com/c19yamamoto/awesome-emulator-cli/commit/37248ea437cd4c46f179d246b20e48e9c7302c5d))
+
+
+### Bug Fixes
+
+* **ci:** repair AWS Emulator version updater workflow ([#34](https://github.com/c19yamamoto/awesome-emulator-cli/issues/34)) ([01133a5](https://github.com/c19yamamoto/awesome-emulator-cli/commit/01133a589117095c36c0eaed010e777b562e27f9))
+
+
+### Performance Improvements
+
+* **ci:** cache emulator image between runs ([#31](https://github.com/c19yamamoto/awesome-emulator-cli/issues/31)) ([3a96963](https://github.com/c19yamamoto/awesome-emulator-cli/commit/3a96963029c8c465d02c8f67c370019452c87ee2))
+* reduce redundant CI builds ([#32](https://github.com/c19yamamoto/awesome-emulator-cli/issues/32)) ([7604bf5](https://github.com/c19yamamoto/awesome-emulator-cli/commit/7604bf5cb13cfe4c7aabec126b03f68bf8acdfc7))
+
 ## [0.2.0](https://github.com/c19yamamoto/awesome-emulator-cli/compare/v0.1.2...v0.2.0) (2026-11-20)
 
 
