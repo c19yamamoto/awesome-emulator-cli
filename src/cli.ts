@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { runWithEmulator, startEmulator, type StartEmulatorOptions } from "./index.js";
+import { DEFAULT_VERSION } from "./emulator-options.js";
 import { FORWARDED_SIGNALS, getSignalExitCode, type ForwardedSignal } from "./signals.js";
 
 type ParsedArgs =
@@ -16,7 +17,7 @@ function usage() {
   awesome-emulator run [options] [--shell] -- <command> [args...]
 
 Options:
-  -v, --version <version>     AWS Emulator version (default: 1.0.522)
+  -v, --version <version>     AWS Emulator version (default: ${DEFAULT_VERSION})
   -p, --port <port>           Host port; 0 chooses an available port (default: 9297)
   -t, --telemetry <on|off>    Telemetry setting (default: on)
       --memory <limit>        Container memory limit (default: 2g)
