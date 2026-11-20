@@ -16,6 +16,8 @@ export type RunWithEmulatorOptions = StartEmulatorOptions & {
   shell?: boolean;
 };
 
+export type PrepareEmulatorOptions = Pick<StartEmulatorOptions, "version" | "signal">;
+
 export type ResolvedEmulatorOptions = {
   version: string;
   requestedPort: number;
@@ -34,6 +36,13 @@ function normalizeVersion(value: string | undefined, environment: NodeJS.Process
     throw new Error(`Invalid AWS Emulator version: ${version}. Use a version such as ${DEFAULT_VERSION}.`);
   }
   return String(version);
+}
+
+export function resolveEmulatorVersion(
+  value: string | undefined,
+  environment: NodeJS.ProcessEnv = process.env,
+): string {
+  return normalizeVersion(value, environment);
 }
 
 function normalizePort(value: number | string | undefined, environment: NodeJS.ProcessEnv): number {
@@ -72,7 +81,7 @@ export function resolveEmulatorOptions(
   environment: NodeJS.ProcessEnv = process.env,
 ): ResolvedEmulatorOptions {
   return {
-    version: normalizeVersion(options.version, environment),
+    version: resolveEmulatorVersion(options.version, environment),
     requestedPort: normalizePort(options.port, environment),
     telemetry: normalizeTelemetry(options.telemetry, environment),
     memory: normalizeMemory(options.memory),
