@@ -18,25 +18,26 @@ type ParsedArgs =
   | { help: true }
   | { help: false; command?: string; options: CliOptions; commandArgs: string[] };
 
-type CliValueOption = "version" | "port" | "telemetry" | "memory" | "region" | "session";
-type CliOptions = Pick<StartEmulatorOptions, "version" | "port" | "telemetry" | "memory">
+type CliValueOption = "version" | "port" | "telemetry" | "memory" | "region" | "session" | "stateDirectory";
+type CliOptions = Pick<StartEmulatorOptions, "version" | "port" | "telemetry" | "memory" | "stateDirectory">
   & Pick<RunWithEmulatorOptions, "region" | "sdks">
   & { shell?: boolean; session?: string; init?: boolean };
 
 function usage() {
   console.log(`Usage:
   awesome-emulator prepare [--version <version>]
-  awesome-emulator start [options]
-  awesome-emulator run [options] [--region <region>] [--sdk <family>]... [--shell] -- <command> [args...]
-  awesome-emulator up --session <name> [options] [--init [child options] -- <command> [args...]]
-  awesome-emulator exec --session <name> [--region <region>] [--sdk <family>]... [--shell] -- <command> [args...]
-  awesome-emulator down --session <name>
+  awesome-emulator start [options] [--state-dir <path>]
+  awesome-emulator run [options] [--state-dir <path>] [--region <region>] [--sdk <family>]... [--shell] -- <command> [args...]
+  awesome-emulator up --session <name> [options] [--state-dir <path>] [--init [child options] -- <command> [args...]]
+  awesome-emulator exec --session <name> [--state-dir <path>] [--region <region>] [--sdk <family>]... [--shell] -- <command> [args...]
+  awesome-emulator down --session <name> [--state-dir <path>]
 
 Options:
   -v, --version <version>     AWS Emulator version (default: ${DEFAULT_VERSION})
   -p, --port <port>           (start/run/up) Host port; 0 chooses an available port (default: 9297)
   -t, --telemetry <on|off>    (start/run/up) Telemetry setting (default: on)
       --memory <limit>        (start/run/up) Container memory limit (default: 2g)
+      --state-dir <path>      (start/run/up/exec/down) Emulator state directory (default: AWS_EMULATOR_STATE_DIR or ~/.aws/emulator)
       --region <region>       (run/exec/up --init) Default region for the child command (default: ${DEFAULT_AWS_REGION})
       --session <name>        (up/exec/down) Persistent emulator session name
       --sdk <family>          (run/exec/up --init) Add SDK-specific TLS settings; repeatable
@@ -96,6 +97,7 @@ function parse(argv: string[]): ParsedArgs {
       "--memory": "memory",
       "--region": "region",
       "--session": "session",
+      "--state-dir": "stateDirectory",
     };
     const key = optionNames[token];
     if (!key) throw new Error(`Unknown option: ${token}`);
@@ -105,10 +107,13 @@ function parse(argv: string[]): ParsedArgs {
     if (key === "session" && command !== "up" && command !== "exec" && command !== "down") {
       throw new Error("--session can only be used with the up, exec, or down command.");
     }
+    if (key === "stateDirectory" && !["start", "run", "up", "exec", "down"].includes(command ?? "")) {
+      throw new Error("--state-dir can only be used with start, run, up, exec, or down.");
+    }
     if (command === "prepare" && key !== "version") {
       throw new Error(`${token} can only be used with the start or run command.`);
     }
-    if ((command === "exec" || command === "down") && key !== "region" && key !== "session") {
+    if ((command === "exec" || command === "down") && key !== "region" && key !== "session" && key !== "stateDirectory") {
       throw new Error(`${token} cannot be used with the ${command} command.`);
     }
     const value = argv[index + 1];
@@ -167,6 +172,7 @@ async function main(signal: AbortSignal): Promise<number> {
       port: parsed.options.port,
       telemetry: parsed.options.telemetry,
       memory: parsed.options.memory,
+      stateDirectory: parsed.options.stateDirectory,
       signal,
       init: parsed.options.init ? {
         command: initCommand!,
@@ -187,13 +193,14 @@ async function main(signal: AbortSignal): Promise<number> {
       region: parsed.options.region,
       sdks: parsed.options.sdks,
       shell: parsed.options.shell,
+      stateDirectory: parsed.options.stateDirectory,
       signal,
     });
   }
 
   if (parsed.command === "down") {
     if (parsed.commandArgs.length > 0) throw new Error("The down command does not accept child command arguments.");
-    await downEmulatorSession(parsed.options.session!);
+    await downEmulatorSession(parsed.options.session!, { stateDirectory: parsed.options.stateDirectory });
     console.log(`Emulator session "${parsed.options.session}" stopped.`);
     return 0;
   }
@@ -210,6 +217,7 @@ async function main(signal: AbortSignal): Promise<number> {
       port: parsed.options.port,
       telemetry: parsed.options.telemetry,
       memory: parsed.options.memory,
+      stateDirectory: parsed.options.stateDirectory,
       signal,
     });
     try {

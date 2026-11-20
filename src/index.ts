@@ -2,7 +2,6 @@ import { randomBytes } from "node:crypto";
 import { mkdir, readFile } from "node:fs/promises";
 import https from "node:https";
 import net from "node:net";
-import os from "node:os";
 import path from "node:path";
 import { createRetryableStop, startContainer, stopContainer, withEmulator } from "./container-lifecycle.js";
 import { docker, throwIfAborted } from "./docker.js";
@@ -18,6 +17,7 @@ import { ensureEmulatorImage, getArchitecture, type EmulatorArchitecture } from 
 import { isSessionOwnerRunning, readSession, removeSession, reserveSession, validateSessionName, writeRunningSession, type RunningSessionRecord } from "./session-store.js";
 import {
   resolveEmulatorOptions,
+  resolveEmulatorStateDirectory,
   resolveEmulatorVersion,
   type PrepareEmulatorOptions,
   type RunWithEmulatorOptions,
@@ -42,7 +42,7 @@ export type EmulatorSession = {
 };
 
 export type PersistentEmulatorSession = Omit<EmulatorSession, "containerId" | "stop"> & { name: string };
-export type EmulatorSessionExecOptions = Pick<RunWithEmulatorOptions, "shell" | "sdks" | "region" | "signal">;
+export type EmulatorSessionExecOptions = Pick<RunWithEmulatorOptions, "shell" | "sdks" | "region" | "signal" | "stateDirectory">;
 export type EmulatorSessionInitCommand = {
   command: string;
   args?: string[];
@@ -54,10 +54,6 @@ export type UpEmulatorSessionOptions = StartEmulatorOptions & { init?: EmulatorS
 
 const MANAGED_CONTAINER_LABEL = "io.github.c19yamamoto.awesome-emulator-cli.managed";
 const SESSION_CONTAINER_LABEL = "io.github.c19yamamoto.awesome-emulator-cli.session";
-
-function emulatorStateDirectory(): string {
-  return path.join(os.homedir(), ".aws", "emulator");
-}
 
 /** Build or reuse the selected AWS Emulator Docker image without starting a container. */
 export async function prepareEmulatorImage(options: PrepareEmulatorOptions = {}): Promise<string> {
@@ -186,13 +182,13 @@ async function startEmulatorWithIdentity(
   options: StartEmulatorOptions,
   containerName: string,
   labels: Record<string, string>,
+  stateDirectory = resolveEmulatorStateDirectory(options.stateDirectory),
 ): Promise<EmulatorSession> {
   throwIfAborted(options.signal);
   const { version, requestedPort, telemetry, memory, startupTimeoutMs } = resolveEmulatorOptions(options);
   const port = requestedPort === 0 ? await getAvailablePort() : requestedPort;
   throwIfAborted(options.signal);
   const architecture = getArchitecture();
-  const stateDirectory = emulatorStateDirectory();
   await mkdir(stateDirectory, { recursive: true, mode: 0o700 });
 
   const image = await ensureEmulatorImage(version, architecture, options.signal);
@@ -249,7 +245,7 @@ export async function upEmulatorSession(
     ? { sdks: normalizeEmulatorSdks(init.sdks), region: resolveAwsRegion(init.region) }
     : undefined;
   if (init && !init.command) throw new Error("An initialization command is required.");
-  const stateDirectory = emulatorStateDirectory();
+  const stateDirectory = resolveEmulatorStateDirectory(emulatorOptions.stateDirectory);
   const containerName = `awesome-emulator-cli-session-${randomBytes(4).toString("hex")}-${name}`;
   await reserveSession(stateDirectory, name, containerName);
 
@@ -258,7 +254,7 @@ export async function upEmulatorSession(
     emulator = await startEmulatorWithIdentity(emulatorOptions, containerName, {
       [MANAGED_CONTAINER_LABEL]: "true",
       [SESSION_CONTAINER_LABEL]: name,
-    });
+    }, stateDirectory);
     if (init && initOptions) {
       const childEnvironment = createChildEnvironment(process.env, emulator.environment, initOptions);
       const exitCode = await runCommand(init.command, init.args ?? [], childEnvironment, options.signal, init.shell ?? false, "stderr");
@@ -337,10 +333,10 @@ export async function execEmulatorSession(
 ): Promise<number> {
   if (!command) throw new Error("A command is required.");
   validateSessionName(name);
-  const { signal, shell = false, sdks: requestedSdks = [], region } = options;
+  const { signal, shell = false, sdks: requestedSdks = [], region, stateDirectory: requestedStateDirectory } = options;
   const childRegion = resolveAwsRegion(region);
   const sdks = normalizeEmulatorSdks(requestedSdks);
-  const stateDirectory = emulatorStateDirectory();
+  const stateDirectory = resolveEmulatorStateDirectory(requestedStateDirectory);
   const session = await readSession(stateDirectory, name);
   if (session.state !== "running") {
     throw new Error(`Emulator session "${name}" is still starting. Wait for "awesome-emulator up" to finish before running commands.`);
@@ -361,9 +357,12 @@ export async function execEmulatorSession(
   return runCommand(command, args, childEnvironment, signal, shell);
 }
 
-export async function downEmulatorSession(name: string): Promise<void> {
+export async function downEmulatorSession(
+  name: string,
+  options: Pick<StartEmulatorOptions, "stateDirectory"> = {},
+): Promise<void> {
   validateSessionName(name);
-  const stateDirectory = emulatorStateDirectory();
+  const stateDirectory = resolveEmulatorStateDirectory(options.stateDirectory);
   const session = await readSession(stateDirectory, name);
   if (session.state === "starting" && isSessionOwnerRunning(session)) {
     throw new Error(`Emulator session "${name}" is still starting. Retry after "awesome-emulator up" finishes.`);

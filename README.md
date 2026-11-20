@@ -43,17 +43,20 @@ The same pattern works with AWS CLI, Go, Java, Rust, and .NET projects. Use `--s
 
 ## Reuse the emulator across commands
 
-Use a named session when setup and tests run as separate commands or CI steps:
+Use a named session when setup and tests run as separate commands or CI steps. Set `AWS_EMULATOR_STATE_DIR` to keep emulator files outside `~/.aws/emulator` without changing `HOME`; the same value is used by `up`, `exec`, and `down`:
 
 ```sh
+export AWS_EMULATOR_STATE_DIR="${RUNNER_TEMP:-/tmp}/awesome-emulator-cli"
 npx awesome-emulator up --session ci-tests --init -- node scripts/seed-emulator.js
 npx awesome-emulator exec --session ci-tests -- npm test
 npx awesome-emulator down --session ci-tests
 ```
 
+Use `--state-dir <path>` to override the environment variable for one command. Relative paths are resolved from the current working directory. The Node.js API accepts the same setting as `stateDirectory`.
+
 `--init` runs once after the emulator is healthy. If it fails, `up` stops the container and exits with an error. Initializer output goes to stderr so `up`'s JSON output stays machine-readable. Use `down` in an always-run CI cleanup step to stop the session after failures.
 
-Session metadata is stored under `~/.aws/emulator/sessions/` (Windows: `%USERPROFILE%\.aws\emulator\sessions\`) and contains connection details, not credential values.
+Session metadata is stored in `<state-dir>/sessions/` and contains connection details, not credential values. The default directory is `~/.aws/emulator/` (Windows: `%USERPROFILE%\.aws\emulator\`).
 
 ## Use from Node.js
 
@@ -74,7 +77,7 @@ Pass an `AbortSignal` as `signal` to cancel image building or startup. For an al
 
 ## Local files and telemetry
 
-The emulator stores its config, credentials, and CA certificate under `~/.aws/emulator/<port>/` (Windows: `%USERPROFILE%\.aws\emulator\<port>\`). Resources stay in memory and are removed when the container stops.
+The emulator stores its config, credentials, and CA certificate under `<state-dir>/<port>/`. Resources stay in memory and are removed when the container stops.
 
 Telemetry is on by default. Turn it off for a run with `--telemetry off`. See [AWS Emulator telemetry details](https://docs.aws.amazon.com/emulator/latest/userguide/telemetry.html) for what it collects.
 
