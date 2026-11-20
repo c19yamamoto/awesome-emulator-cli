@@ -51,8 +51,8 @@ jobs:
         with:
           dotnet-version: "8.0.x"
 
-      - name: Build the CLI
-        run: npm ci && npm run build
+      - name: Install dependencies and build the CLI
+        run: npm ci
 
       - name: Install SDK smoke dependencies
         run: |
