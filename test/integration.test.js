@@ -118,7 +118,7 @@ test("resolves nested npx packages when launched through npm exec --package", { 
       "const nested = spawnSync('npx', ['--yes', packageSpec, 'hello'], { env, encoding: 'utf8' })",
       "process.stdout.write(nested.stdout || '')",
       "process.stderr.write(nested.stderr || '')",
-      "process.exit(nested.status ?? 1)",
+      "process.exitCode = nested.status ?? 1",
     ].join("; ");
     const wrappedRun = spawnSync("npm", [
       "exec", "--yes", `--package=${cliTarball}`, "--",
