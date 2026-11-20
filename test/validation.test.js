@@ -38,3 +38,17 @@ test("CLI reports an invalid emulator version without starting Docker", () => {
   assert.match(result.stderr, /Invalid AWS Emulator version/);
   assert.doesNotMatch(result.stderr, /Docker was not found/);
 });
+
+test("CLI rejects an unsupported SDK without starting Docker", () => {
+  const result = spawnSync(process.execPath, [cliPath, "run", "--sdk", "unknown", "--", "echo", "test"], { encoding: "utf8" });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /Unsupported SDK: unknown/);
+  assert.doesNotMatch(result.stderr, /Docker was not found/);
+});
+
+test("CLI only accepts SDK-specific TLS settings for run", () => {
+  const result = spawnSync(process.execPath, [cliPath, "start", "--sdk", "java-v2"], { encoding: "utf8" });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /--sdk can only be used with the run command/);
+  assert.doesNotMatch(result.stderr, /Docker was not found/);
+});
