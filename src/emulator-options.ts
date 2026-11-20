@@ -16,6 +16,8 @@ export type RunWithEmulatorOptions = StartEmulatorOptions & {
    * Defaults to false.
    */
   shell?: boolean;
+  /** Set AWS_REGION and AWS_DEFAULT_REGION for the child command. */
+  region?: string;
   /** Add SDK-specific TLS settings for the selected SDK families. */
   sdks?: EmulatorSdk[];
 };

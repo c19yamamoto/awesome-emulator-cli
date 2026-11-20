@@ -19,6 +19,13 @@ export const SUPPORTED_EMULATOR_SDKS = [
 ] as const;
 
 export type EmulatorSdk = typeof SUPPORTED_EMULATOR_SDKS[number];
+export const DEFAULT_AWS_REGION = "us-east-1";
+
+export type ChildEnvironmentOptions = {
+  sdks?: readonly EmulatorSdk[];
+  region?: string;
+  platform?: NodeJS.Platform;
+};
 
 export type EmulatorConnectionSettings = {
   endpointUrl: string;
@@ -77,6 +84,12 @@ export function normalizeEmulatorSdks(sdks: readonly string[] = []): EmulatorSdk
   return [...new Set(sdks)] as EmulatorSdk[];
 }
 
+export function resolveAwsRegion(region: string | undefined, defaultRegion = DEFAULT_AWS_REGION): string {
+  const resolvedRegion = region ?? defaultRegion;
+  if (resolvedRegion.trim().length === 0) throw new Error("Region must not be empty.");
+  return resolvedRegion;
+}
+
 export function createEmulatorConnectionSettings(port: number, stateDirectory: string): EmulatorConnectionSettings {
   const endpointUrl = `https://127.0.0.1:${port}`;
   const portDirectory = path.join(stateDirectory, String(port));
@@ -86,8 +99,8 @@ export function createEmulatorConnectionSettings(port: number, stateDirectory: s
     AWS_CONFIG_FILE: path.join(portDirectory, "config"),
     AWS_CA_BUNDLE: path.join(portDirectory, "ca.pem"),
     AWS_EC2_METADATA_DISABLED: "true",
-    AWS_REGION: "us-east-1",
-    AWS_DEFAULT_REGION: "us-east-1",
+    AWS_REGION: DEFAULT_AWS_REGION,
+    AWS_DEFAULT_REGION: DEFAULT_AWS_REGION,
     NODE_EXTRA_CA_CERTS: path.join(portDirectory, "ca.pem"),
     AWS_DISABLE_HOST_PREFIX_INJECTION: "true",
   };
@@ -105,9 +118,9 @@ export function createEmulatorConnectionSettings(port: number, stateDirectory: s
 export function createChildEnvironment(
   parentEnvironment: NodeJS.ProcessEnv,
   emulatorEnvironment: EmulatorEnvironment,
-  sdks: readonly EmulatorSdk[] = [],
-  platform: NodeJS.Platform = process.platform,
+  options: ChildEnvironmentOptions = {},
 ): NodeJS.ProcessEnv {
+  const { sdks = [], region, platform = process.platform } = options;
   const caseInsensitiveEnvironment = platform === "win32";
   const normalizeName = (name: string): string => caseInsensitiveEnvironment ? name.toUpperCase() : name;
   const childEnvironment: NodeJS.ProcessEnv = { ...parentEnvironment };
@@ -122,7 +135,11 @@ export function createChildEnvironment(
       delete childEnvironment[key];
     }
   }
-  Object.assign(childEnvironment, emulatorEnvironment);
+  const childRegion = resolveAwsRegion(region, emulatorEnvironment.AWS_REGION);
+  Object.assign(childEnvironment, emulatorEnvironment, {
+    AWS_REGION: childRegion,
+    AWS_DEFAULT_REGION: childRegion,
+  });
 
   if (sdks.includes("java-v2")) {
     const inheritedJavaOptions: string[] = [];
