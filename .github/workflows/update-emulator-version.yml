@@ -27,16 +27,19 @@ jobs:
           BRANCH: codex/update-aws-emulator-version
           GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
           VERSION: ${{ steps.update.outputs.version }}
+          RELEASE_AS: ${{ steps.update.outputs.release_as }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git switch --create "$BRANCH"
           git add src/emulator-options.ts
-          git commit -m "feat: update default AWS Emulator to $VERSION"
+          git commit -m "chore: update default AWS Emulator to $VERSION" -m "Release-As: $RELEASE_AS"
           git push --force origin "HEAD:refs/heads/$BRANCH"
 
-          title="feat: update default AWS Emulator to $VERSION"
-          body="Updates the wrapper's default AWS Emulator version to $VERSION. CI validates the new version before the wrapper release. Squash-merging this PR lets Release Please propose the next minor release."
+          title="chore: update default AWS Emulator to $VERSION"
+          body="Updates the wrapper's default AWS Emulator version to $VERSION. CI validates the new version before the wrapper release. The branch commit carries a Release-As footer so Release Please proposes the next minor wrapper release ($RELEASE_AS). Preserve the footer in the squash commit body.
+
+Release-As: $RELEASE_AS"
           pr_number="$(gh pr list --state open --head "$GITHUB_REPOSITORY_OWNER:$BRANCH" --json number --jq '.[0].number')"
           if [ -n "$pr_number" ]; then
             gh pr edit "$pr_number" --title "$title" --body "$body"

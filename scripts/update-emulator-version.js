@@ -1,7 +1,9 @@
 import { appendFile, readFile, writeFile } from "node:fs/promises";
+import { pathToFileURL } from "node:url";
 
 const RELEASES_URL = "https://api.github.com/repos/aws/aws-emulator/releases/latest";
 const OPTIONS_FILE = new URL("../src/emulator-options.ts", import.meta.url);
+const PACKAGE_FILE = new URL("../package.json", import.meta.url);
 
 function compareVersions(left, right) {
   const leftParts = left.split(".").map(Number);
@@ -12,14 +14,27 @@ function compareVersions(left, right) {
   return 0;
 }
 
-async function main() {
+function nextMinorVersion(version) {
+  const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(version);
+  if (!match) throw new Error(`Unexpected package version: ${version}.`);
+  return `${match[1]}.${Number(match[2]) + 1}.0`;
+}
+
+export async function updateEmulatorVersion({
+  fetchImpl = fetch,
+  optionsFile = OPTIONS_FILE,
+  packageFile = PACKAGE_FILE,
+  outputFile = process.env.GITHUB_OUTPUT,
+  token = process.env.GITHUB_TOKEN,
+  log = console.log,
+} = {}) {
   const headers = {
     Accept: "application/vnd.github+json",
     "X-GitHub-Api-Version": "2022-11-28",
   };
-  if (process.env.GITHUB_TOKEN) headers.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
+  if (token) headers.Authorization = `Bearer ${token}`;
 
-  const response = await fetch(RELEASES_URL, { headers, signal: AbortSignal.timeout(10_000) });
+  const response = await fetchImpl(RELEASES_URL, { headers, signal: AbortSignal.timeout(10_000) });
   if (!response.ok) throw new Error(`GitHub releases API returned ${response.status}.`);
 
   const release = await response.json();
@@ -27,26 +42,32 @@ async function main() {
   if (!match) throw new Error(`Unexpected AWS Emulator release tag: ${release.tag_name}.`);
   const upstreamVersion = match[1];
 
-  const source = await readFile(OPTIONS_FILE, "utf8");
+  const source = await readFile(optionsFile, "utf8");
   const defaultVersion = /^export const DEFAULT_VERSION = "(\d+\.\d+\.\d+)";$/m;
   const currentMatch = defaultVersion.exec(source);
   if (!currentMatch) throw new Error("Could not find DEFAULT_VERSION in src/emulator-options.ts.");
 
+  const packageJson = JSON.parse(await readFile(packageFile, "utf8"));
+  const releaseAs = nextMinorVersion(packageJson.version);
   const currentVersion = currentMatch[1];
   const updated = compareVersions(upstreamVersion, currentVersion) > 0;
   if (updated) {
-    await writeFile(OPTIONS_FILE, source.replace(defaultVersion, `export const DEFAULT_VERSION = "${upstreamVersion}";`));
-    console.log(`Updated the default AWS Emulator version from ${currentVersion} to ${upstreamVersion}.`);
+    await writeFile(optionsFile, source.replace(defaultVersion, `export const DEFAULT_VERSION = "${upstreamVersion}";`));
+    log(`Updated the default AWS Emulator version from ${currentVersion} to ${upstreamVersion}.`);
   } else {
-    console.log(`The default AWS Emulator version ${currentVersion} is current.`);
+    log(`The default AWS Emulator version ${currentVersion} is current.`);
   }
 
-  if (process.env.GITHUB_OUTPUT) {
-    await appendFile(process.env.GITHUB_OUTPUT, `updated=${updated}\nversion=${upstreamVersion}\n`);
+  if (outputFile) {
+    await appendFile(outputFile, `updated=${updated}\nversion=${upstreamVersion}\nrelease_as=${releaseAs}\n`);
   }
+
+  return { updated, version: upstreamVersion, releaseAs };
 }
 
-main().catch((error) => {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exitCode = 1;
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  updateEmulatorVersion().catch((error) => {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+  });
+}
