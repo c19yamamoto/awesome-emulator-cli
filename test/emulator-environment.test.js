@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import path from "node:path";
 import {
   createChildEnvironment,
   createEmulatorConnectionSettings,
@@ -86,10 +87,11 @@ test("adds the Java truststore while preserving existing JVM options", () => {
   const child = createChildEnvironment({
     JAVA_TOOL_OPTIONS: "-Xmx1g -Dcustom.setting=value",
   }, emulator.environment, ["java-v2"]);
+  const trustStore = path.join(path.dirname(emulator.caFile), "truststore.p12");
 
   assert.equal(
     child.JAVA_TOOL_OPTIONS,
-    '-Xmx1g -Dcustom.setting=value "-Djavax.net.ssl.trustStore=/Users/test user/.aws/emulator/9297/truststore.p12" -Djavax.net.ssl.trustStoreType=PKCS12',
+    `-Xmx1g -Dcustom.setting=value "-Djavax.net.ssl.trustStore=${trustStore}" -Djavax.net.ssl.trustStoreType=PKCS12`,
   );
   assert.equal(child.SSL_CERT_FILE, undefined);
 });
