@@ -24,7 +24,7 @@ jobs:
       - name: Open or refresh a draft pull request
         if: steps.update.outputs.updated == 'true'
         env:
-          BRANCH: codex/update-aws-emulator-version
+          BRANCH: update-aws-emulator-version
           GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
           VERSION: ${{ steps.update.outputs.version }}
           RELEASE_AS: ${{ steps.update.outputs.release_as }}
