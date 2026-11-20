@@ -35,6 +35,14 @@ npx awesome-emulator run -- npm test
 
 `run` starts the emulator, supplies the connection settings to the child process, then stops the container. Use `--version` to select a release and `--port 0` to choose a free local port. Run `npx awesome-emulator --help` for all options.
 
+Set the child's default AWS region with `--region`:
+
+```sh
+npx awesome-emulator run --region ap-northeast-1 -- npm test
+```
+
+By default, both `AWS_REGION` and `AWS_DEFAULT_REGION` are `us-east-1`. `--region` sets both for the child command without changing the emulator endpoint. An SDK client configured with its own region continues to use that explicit region.
+
 ### Run non-Node projects
 
 You can run an existing project command even when the project has no `package.json`. Use `npm exec` to download the CLI for the run:

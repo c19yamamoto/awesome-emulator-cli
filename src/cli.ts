@@ -1,28 +1,37 @@
 #!/usr/bin/env node
 
-import { prepareEmulatorImage, runWithEmulator, startEmulator, type StartEmulatorOptions } from "./index.js";
+import {
+  prepareEmulatorImage,
+  runWithEmulator,
+  startEmulator,
+  type RunWithEmulatorOptions,
+  type StartEmulatorOptions,
+} from "./index.js";
 import { DEFAULT_VERSION } from "./emulator-options.js";
 import { FORWARDED_SIGNALS, getSignalExitCode, type ForwardedSignal } from "./signals.js";
-import { SUPPORTED_EMULATOR_SDKS, type EmulatorSdk } from "./emulator-environment.js";
+import { DEFAULT_AWS_REGION, SUPPORTED_EMULATOR_SDKS, type EmulatorSdk } from "./emulator-environment.js";
 
 type ParsedArgs =
   | { help: true }
   | { help: false; command?: string; options: CliOptions; commandArgs: string[] };
 
-type CliValueOption = keyof Pick<StartEmulatorOptions, "version" | "port" | "telemetry" | "memory">;
-type CliOptions = Pick<StartEmulatorOptions, CliValueOption> & { shell?: boolean; sdks?: EmulatorSdk[] };
+type CliValueOption = "version" | "port" | "telemetry" | "memory" | "region";
+type CliOptions = Pick<StartEmulatorOptions, Exclude<CliValueOption, "region">>
+  & Pick<RunWithEmulatorOptions, "region">
+  & { shell?: boolean; sdks?: EmulatorSdk[] };
 
 function usage() {
   console.log(`Usage:
   awesome-emulator prepare [--version <version>]
   awesome-emulator start [options]
-  awesome-emulator run [options] [--sdk <family>]... [--shell] -- <command> [args...]
+  awesome-emulator run [options] [--region <region>] [--sdk <family>]... [--shell] -- <command> [args...]
 
 Options:
   -v, --version <version>     AWS Emulator version (default: ${DEFAULT_VERSION})
   -p, --port <port>           (start/run) Host port; 0 chooses an available port (default: 9297)
   -t, --telemetry <on|off>    (start/run) Telemetry setting (default: on)
       --memory <limit>        (start/run) Container memory limit (default: 2g)
+      --region <region>       (run only) Default region for the child command (default: ${DEFAULT_AWS_REGION})
       --sdk <family>          (run only) Add SDK-specific TLS settings; repeatable
                               (${SUPPORTED_EMULATOR_SDKS.join(", ")})
       --shell                 (run only) Enable .cmd/.bat and built-ins; trusted values only
@@ -68,9 +77,13 @@ function parse(argv: string[]): ParsedArgs {
       "-p": "port", "--port": "port",
       "-t": "telemetry", "--telemetry": "telemetry",
       "--memory": "memory",
+      "--region": "region",
     };
     const key = optionNames[token];
     if (!key) throw new Error(`Unknown option: ${token}`);
+    if (key === "region" && command !== "run") {
+      throw new Error("--region can only be used with the run command.");
+    }
     if (command === "prepare" && key !== "version") {
       throw new Error(`${token} can only be used with the start or run command.`);
     }

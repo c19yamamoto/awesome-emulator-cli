@@ -56,13 +56,38 @@ test("overrides AWS settings and removes host credentials and endpoints", () => 
   assert.equal(child.AWS_EC2_METADATA_SERVICE_ENDPOINT_MODE, undefined);
 });
 
+test("sets both child region variables to us-east-1 by default", () => {
+  const child = createChildEnvironment({}, emulator.environment);
+
+  assert.equal(child.AWS_REGION, "us-east-1");
+  assert.equal(child.AWS_DEFAULT_REGION, "us-east-1");
+});
+
+test("sets both child region variables when an explicit region is provided", () => {
+  const child = createChildEnvironment({
+    AWS_REGION: "host-region",
+    AWS_DEFAULT_REGION: "host-default-region",
+  }, emulator.environment, { region: "ap-northeast-1" });
+
+  assert.equal(child.AWS_REGION, "ap-northeast-1");
+  assert.equal(child.AWS_DEFAULT_REGION, "ap-northeast-1");
+  assert.equal(child.AWS_ENDPOINT_URL, emulator.endpointUrl);
+});
+
+test("rejects an empty child region", () => {
+  assert.throws(
+    () => createChildEnvironment({}, emulator.environment, { region: "   " }),
+    /Region must not be empty/,
+  );
+});
+
 test("filters case-insensitive AWS and Java environment names on Windows", () => {
   const child = createChildEnvironment({
     aws_access_key_id: "host-key",
     aws_endpoint_url_sts: "https://aws.example.com",
     java_tool_options: "-Xmx1g",
     ssl_cert_file: "/host/certificates.pem",
-  }, emulator.environment, ["java-v2", "rust"], "win32");
+  }, emulator.environment, { sdks: ["java-v2", "rust"], platform: "win32" });
 
   assert.equal(child.aws_access_key_id, undefined);
   assert.equal(child.aws_endpoint_url_sts, undefined);
@@ -86,7 +111,7 @@ test("does not alter Java or OpenSSL settings for an unrelated child", () => {
 test("adds the Java truststore while preserving existing JVM options", () => {
   const child = createChildEnvironment({
     JAVA_TOOL_OPTIONS: "-Xmx1g -Dcustom.setting=value",
-  }, emulator.environment, ["java-v2"]);
+  }, emulator.environment, { sdks: ["java-v2"] });
   const trustStore = path.join(path.dirname(emulator.caFile), "truststore.p12");
 
   assert.equal(
@@ -98,7 +123,7 @@ test("adds the Java truststore while preserving existing JVM options", () => {
 
 test("preserves an explicitly configured Java truststore for combined certificate bundles", () => {
   const javaOptions = '-Xmx1g -Djavax.net.ssl.trustStore="/tmp/combined truststore.p12" -Djavax.net.ssl.trustStoreType=PKCS12';
-  const child = createChildEnvironment({ JAVA_TOOL_OPTIONS: javaOptions }, emulator.environment, ["java-v2"]);
+  const child = createChildEnvironment({ JAVA_TOOL_OPTIONS: javaOptions }, emulator.environment, { sdks: ["java-v2"] });
 
   assert.equal(child.JAVA_TOOL_OPTIONS, javaOptions);
 });
@@ -106,7 +131,7 @@ test("preserves an explicitly configured Java truststore for combined certificat
 test("adds the emulator truststore when only its type is configured", () => {
   const child = createChildEnvironment({
     JDK_JAVA_OPTIONS: "-Xmx1g -Djavax.net.ssl.trustStoreType=PKCS12",
-  }, emulator.environment, ["java-v2"]);
+  }, emulator.environment, { sdks: ["java-v2"] });
 
   assert.match(child.JAVA_TOOL_OPTIONS, /-Djavax\.net\.ssl\.trustStore=.*truststore\.p12/);
   assert.equal(child.JDK_JAVA_OPTIONS, "-Xmx1g -Djavax.net.ssl.trustStoreType=PKCS12");
@@ -115,7 +140,7 @@ test("adds the emulator truststore when only its type is configured", () => {
 
 test("rejects an incompatible Java truststore type without a custom truststore", () => {
   assert.throws(
-    () => createChildEnvironment({ JAVA_TOOL_OPTIONS: "-Djavax.net.ssl.trustStoreType=JKS" }, emulator.environment, ["java-v2"]),
+    () => createChildEnvironment({ JAVA_TOOL_OPTIONS: "-Djavax.net.ssl.trustStoreType=JKS" }, emulator.environment, { sdks: ["java-v2"] }),
     /emulator truststore uses PKCS12/,
   );
 });
@@ -132,25 +157,25 @@ test("rejects Java system properties that can override emulator credentials or e
     { SBT_OPTS: "-Daws.endpointUrl=https://aws.example.com" },
   ]) {
     assert.throws(
-      () => createChildEnvironment(property, emulator.environment, ["java-v2"]),
+      () => createChildEnvironment(property, emulator.environment, { sdks: ["java-v2"] }),
       /Inherited JVM options contain an AWS credential, profile, or endpoint override/,
     );
   }
 
   assert.throws(
-    () => createChildEnvironment({ java_tool_options: "-Daws.secretAccessKey=host-secret" }, emulator.environment, ["java-v2"], "win32"),
+    () => createChildEnvironment({ java_tool_options: "-Daws.secretAccessKey=host-secret" }, emulator.environment, { sdks: ["java-v2"], platform: "win32" }),
     /Inherited JVM options contain an AWS credential, profile, or endpoint override/,
   );
 
   assert.throws(
-    () => createChildEnvironment({ JDK_JAVA_OPTIONS: "@/tmp/aws-options.txt" }, emulator.environment, ["java-v2"]),
+    () => createChildEnvironment({ JDK_JAVA_OPTIONS: "@/tmp/aws-options.txt" }, emulator.environment, { sdks: ["java-v2"] }),
     /reference an @argument file/,
   );
 });
 
 test("keeps build-tool JVM options in their own variables", () => {
   const mavenOptions = "-Xmx1g -Djavax.net.ssl.trustStore=/tmp/maven-truststore.p12";
-  const child = createChildEnvironment({ MAVEN_OPTS: mavenOptions }, emulator.environment, ["java-v2"]);
+  const child = createChildEnvironment({ MAVEN_OPTS: mavenOptions }, emulator.environment, { sdks: ["java-v2"] });
 
   assert.equal(child.MAVEN_OPTS, mavenOptions);
   assert.match(child.JAVA_TOOL_OPTIONS, /truststore\.p12/);
@@ -159,19 +184,19 @@ test("keeps build-tool JVM options in their own variables", () => {
 
 test("rejects an incompatible truststore type from build-tool options", () => {
   assert.throws(
-    () => createChildEnvironment({ GRADLE_OPTS: "-Djavax.net.ssl.trustStoreType=JKS" }, emulator.environment, ["java-v2"]),
+    () => createChildEnvironment({ GRADLE_OPTS: "-Djavax.net.ssl.trustStoreType=JKS" }, emulator.environment, { sdks: ["java-v2"] }),
     /emulator truststore uses PKCS12/,
   );
 });
 
 test("sets SSL_CERT_FILE only for Rust or .NET and combines SDK selections", () => {
   for (const sdk of ["rust", "dotnet"]) {
-    const child = createChildEnvironment({}, emulator.environment, [sdk]);
+    const child = createChildEnvironment({}, emulator.environment, { sdks: [sdk] });
     assert.equal(child.SSL_CERT_FILE, emulator.caFile);
     assert.equal(child.JAVA_TOOL_OPTIONS, undefined);
   }
 
-  const combined = createChildEnvironment({}, emulator.environment, ["java-v2", "rust"]);
+  const combined = createChildEnvironment({}, emulator.environment, { sdks: ["java-v2", "rust"] });
   assert.equal(combined.SSL_CERT_FILE, emulator.caFile);
   assert.match(combined.JAVA_TOOL_OPTIONS, /truststore\.p12/);
 });

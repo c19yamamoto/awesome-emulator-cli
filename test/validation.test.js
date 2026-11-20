@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
-import { startEmulator } from "../dist/index.js";
+import { runWithEmulator, startEmulator } from "../dist/index.js";
 
 const cliPath = fileURLToPath(new URL("../bin/awesome-emulator.js", import.meta.url));
 
@@ -26,10 +26,15 @@ test("rejects startup timeouts shorter than one second", async () => {
   await assert.rejects(startEmulator({ startupTimeoutMs: 999 }), /startupTimeoutMs/);
 });
 
+test("rejects an empty child region before requiring Docker", async () => {
+  await assert.rejects(runWithEmulator("echo", [], { region: "   " }), /Region must not be empty/);
+});
+
 test("CLI help works without Docker", () => {
   const result = spawnSync(process.execPath, [cliPath, "--help"], { encoding: "utf8" });
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /awesome-emulator run/);
+  assert.match(result.stdout, /--region <region>/);
 });
 
 test("CLI reports an invalid emulator version without starting Docker", () => {
@@ -51,4 +56,18 @@ test("CLI only accepts SDK-specific TLS settings for run", () => {
   assert.equal(result.status, 1);
   assert.match(result.stderr, /--sdk can only be used with the run command/);
   assert.doesNotMatch(result.stderr, /Docker was not found/);
+});
+
+test("CLI only accepts --region with run", () => {
+  const result = spawnSync(process.execPath, [cliPath, "start", "--region", "ap-northeast-1"], { encoding: "utf8" });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /--region can only be used with the run command/);
+  assert.doesNotMatch(result.stderr, /Docker was not found/);
+});
+
+test("CLI accepts --region before the child command", () => {
+  const result = spawnSync(process.execPath, [cliPath, "run", "--region", "ap-northeast-1"], { encoding: "utf8" });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /Usage: awesome-emulator run/);
+  assert.doesNotMatch(result.stderr, /Unknown option|Docker was not found/);
 });

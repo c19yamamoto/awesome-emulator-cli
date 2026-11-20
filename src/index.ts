@@ -10,6 +10,7 @@ import {
   createChildEnvironment,
   createEmulatorConnectionSettings,
   normalizeEmulatorSdks,
+  resolveAwsRegion,
   type EmulatorEnvironment,
 } from "./emulator-environment.js";
 import { ensureEmulatorImage, getArchitecture, type EmulatorArchitecture } from "./emulator-image.js";
@@ -210,10 +211,11 @@ export async function startEmulator(options: StartEmulatorOptions = {}): Promise
  */
 export async function runWithEmulator(command: string, args: string[] = [], options: RunWithEmulatorOptions = {}): Promise<number> {
   if (!command) throw new Error("A command is required.");
-  const { shell = false, sdks: requestedSdks = [], ...emulatorOptions } = options;
+  const { shell = false, sdks: requestedSdks = [], region, ...emulatorOptions } = options;
+  const childRegion = resolveAwsRegion(region);
   const sdks = normalizeEmulatorSdks(requestedSdks);
   return withEmulator(() => startEmulator(emulatorOptions), async (emulator) => {
-    const childEnvironment = createChildEnvironment(process.env, emulator.environment, sdks);
+    const childEnvironment = createChildEnvironment(process.env, emulator.environment, { sdks, region: childRegion });
     return runCommand(command, args, childEnvironment, emulatorOptions.signal, shell);
   });
 }
