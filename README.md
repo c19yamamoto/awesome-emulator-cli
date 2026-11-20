@@ -1,5 +1,9 @@
 # Awesome Emulator CLI
 
+<p align="center">
+  <img src="./assets/social-preview.png" alt="Awesome Emulator CLI — Local emulator testing for Node.js" width="100%">
+</p>
+
 Awesome Emulator CLI for use with AWS Emulator in local tests from npm scripts or Node.js. It runs the upstream Linux package in Docker.
 
 This is an independent project and is not affiliated with or endorsed by Amazon Web Services.
