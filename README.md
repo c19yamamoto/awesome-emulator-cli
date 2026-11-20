@@ -49,6 +49,10 @@ npm exec --yes --package=awesome-emulator-cli -- awesome-emulator run -- python 
 
 The same pattern works with AWS CLI, Go, Java, Rust, and .NET projects. Use `--sdk` when a command needs SDK-specific TLS settings; see the [SDK configuration guide](./docs/sdk-configuration.md).
 
+## Examples
+
+See [awesome-emulator-cli-samples](https://github.com/c19yamamoto/awesome-emulator-cli-samples) for end-to-end S3 examples and integration tests using AWS SDKs in JavaScript, Python, Go, Java, Rust, and .NET.
+
 ## Reuse the emulator across commands
 
 Use a named session when setup and tests run as separate commands or CI steps. Set `AWS_EMULATOR_STATE_DIR` to keep emulator files outside `~/.aws/emulator` without changing `HOME`; the same value is used by `up`, `exec`, and `down`:
