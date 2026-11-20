@@ -87,3 +87,17 @@ test("exec accepts session-specific child options without requiring Docker when 
   assert.match(result.stderr, /Usage: awesome-emulator exec/);
   assert.doesNotMatch(result.stderr, /Unknown option|Docker was not found/);
 });
+
+test("up requires a command after --init", () => {
+  const result = spawnSync(process.execPath, [cliPath, "up", "--session", "ci-tests", "--init", "--"], { encoding: "utf8" });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /Usage: awesome-emulator up .*--init/);
+  assert.doesNotMatch(result.stderr, /Docker was not found/);
+});
+
+test("up only accepts child command options when --init is enabled", () => {
+  const result = spawnSync(process.execPath, [cliPath, "up", "--session", "ci-tests", "--region", "ap-northeast-1"], { encoding: "utf8" });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /Child command options and arguments for up require --init/);
+  assert.doesNotMatch(result.stderr, /Docker was not found/);
+});

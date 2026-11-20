@@ -7,11 +7,12 @@ export function runCommand(
   env: NodeJS.ProcessEnv,
   signal?: AbortSignal,
   shell = false,
+  stdout: "inherit" | "stderr" = "inherit",
 ): Promise<number> {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
       env,
-      stdio: "inherit",
+      stdio: stdout === "stderr" ? ["inherit", 2, "inherit"] : "inherit",
       shell,
       windowsHide: false,
     });
