@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.2](https://github.com/c19yamamoto/awesome-emulator-cli/compare/v0.6.1...v0.6.2) (2026-11-20)
+
+
+### Maintenance
+
+* **npm:** add search keywords ([#64](https://github.com/c19yamamoto/awesome-emulator-cli/issues/64)) ([1646cff](https://github.com/c19yamamoto/awesome-emulator-cli/commit/1646cffac6ac7936827bfafe5f8352d760308720))
+
 ## [0.6.1](https://github.com/c19yamamoto/awesome-emulator-cli/compare/v0.6.0...v0.6.1) (2026-11-20)
 
 
