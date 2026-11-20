@@ -21,7 +21,6 @@
     "test:unit": "node --test",
     "test:integration": "node --test test/integration.test.js",
     "prepare": "npm run build",
-    "prepack": "npm run build",
     "check:release-version": "node scripts/check-release-version.js"
   },
   "engines": {
