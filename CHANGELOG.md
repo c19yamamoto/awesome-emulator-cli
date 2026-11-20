@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.1](https://github.com/c19yamamoto/awesome-emulator-cli/compare/v0.6.0...v0.6.1) (2026-11-20)
+
+
+### Performance Improvements
+
+* avoid redundant package builds ([#61](https://github.com/c19yamamoto/awesome-emulator-cli/issues/61)) ([b44dd9f](https://github.com/c19yamamoto/awesome-emulator-cli/commit/b44dd9f5fcf19e0fffe80f4d3c70b229ea4c2346))
+
 ## [0.6.0](https://github.com/c19yamamoto/awesome-emulator-cli/compare/v0.5.1...v0.6.0) (2026-11-20)
 
 
