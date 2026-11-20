@@ -69,5 +69,3 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) to contribute and [SECURITY.md](./SECUR
 ## License
 
 MIT. See [LICENSE](./LICENSE). This license covers the wrapper; downloaded AWS Emulator binaries retain their own license and notices.
-
-npm is a registered trademark of npm, Inc.
