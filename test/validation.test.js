@@ -54,14 +54,14 @@ test("CLI rejects an unsupported SDK without starting Docker", () => {
 test("CLI only accepts SDK-specific TLS settings for run", () => {
   const result = spawnSync(process.execPath, [cliPath, "start", "--sdk", "java-v2"], { encoding: "utf8" });
   assert.equal(result.status, 1);
-  assert.match(result.stderr, /--sdk can only be used with the run command/);
+  assert.match(result.stderr, /--sdk can only be used with the run or exec command/);
   assert.doesNotMatch(result.stderr, /Docker was not found/);
 });
 
 test("CLI only accepts --region with run", () => {
   const result = spawnSync(process.execPath, [cliPath, "start", "--region", "ap-northeast-1"], { encoding: "utf8" });
   assert.equal(result.status, 1);
-  assert.match(result.stderr, /--region can only be used with the run command/);
+  assert.match(result.stderr, /--region can only be used with the run or exec command/);
   assert.doesNotMatch(result.stderr, /Docker was not found/);
 });
 
@@ -69,5 +69,21 @@ test("CLI accepts --region before the child command", () => {
   const result = spawnSync(process.execPath, [cliPath, "run", "--region", "ap-northeast-1"], { encoding: "utf8" });
   assert.equal(result.status, 1);
   assert.match(result.stderr, /Usage: awesome-emulator run/);
+  assert.doesNotMatch(result.stderr, /Unknown option|Docker was not found/);
+});
+
+test("persistent session commands require a session name before Docker startup", () => {
+  for (const command of ["up", "exec", "down"]) {
+    const result = spawnSync(process.execPath, [cliPath, command], { encoding: "utf8" });
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, new RegExp(`--session is required with the ${command} command`));
+    assert.doesNotMatch(result.stderr, /Docker was not found/);
+  }
+});
+
+test("exec accepts session-specific child options without requiring Docker when no command is given", () => {
+  const result = spawnSync(process.execPath, [cliPath, "exec", "--session", "ci-tests", "--region", "ap-northeast-1"], { encoding: "utf8" });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /Usage: awesome-emulator exec/);
   assert.doesNotMatch(result.stderr, /Unknown option|Docker was not found/);
 });

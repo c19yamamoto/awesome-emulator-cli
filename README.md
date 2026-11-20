@@ -98,6 +98,21 @@ npx awesome-emulator run --shell -- npm test
 
 Use `--shell` only with trusted command and argument values. Shell metacharacters are interpreted in this mode. Node.js API callers can opt in with `runWithEmulator(command, args, { shell: true })` under the same restriction.
 
+## Reuse an emulator across commands
+
+Use a named session when setup and tests run in separate commands or CI steps. The session metadata is stored under `~/.aws/emulator/sessions/` with restrictive file permissions on Unix systems; it contains container and connection details, not credential values. `exec` supplies the same emulator environment as `run` and can be called repeatedly:
+
+```sh
+npx awesome-emulator up --session ci-tests --port 0
+npx awesome-emulator exec --session ci-tests -- npm run seed
+npx awesome-emulator exec --session ci-tests -- npm test
+npx awesome-emulator down --session ci-tests
+```
+
+In CI, put the final `down` command in an always-run cleanup step so the container is removed even when a test step fails. Each CI job should use its own session name. `up` prints the connection settings as JSON; it does not print the container ID or credential values.
+
+Persistent sessions use `ps` on Unix or Windows PowerShell on Windows to distinguish an active startup from an abandoned session record.
+
 ## Use from Node.js
 
 Use the API when your test harness needs to control the emulator lifecycle directly:
