@@ -71,6 +71,9 @@ const JAVA_OPTION_ENVIRONMENT_KEYS = [
   "SBT_OPTS",
 ] as const;
 
+// npm exec --package exports its selector to children; nested npx must use its own requested package.
+const NPM_LAUNCHER_ENVIRONMENT_KEYS = ["npm_config_package"] as const;
+
 const JVM_WIDE_JAVA_OPTION_ENVIRONMENT_KEYS = [
   "JAVA_TOOL_OPTIONS",
   "JDK_JAVA_OPTIONS",
@@ -129,6 +132,7 @@ export function createChildEnvironment(
   const controlledEnvironmentKeys = new Set([
     ...Object.keys(emulatorEnvironment),
     ...AWS_CREDENTIAL_ENVIRONMENT_KEYS,
+    ...NPM_LAUNCHER_ENVIRONMENT_KEYS,
     ...(sdks.includes("rust") || sdks.includes("dotnet") ? ["SSL_CERT_FILE"] : []),
   ].map(normalizeName));
   for (const key of Object.keys(childEnvironment)) {

@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { access, readFile, rm } from "node:fs/promises";
+import { access, cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import https from "node:https";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 import { downEmulatorSession, execEmulatorSession, startEmulator, upEmulatorSession } from "../dist/index.js";
 
 const enabled = process.env.AWS_EMULATOR_INTEGRATION_TESTS === "1";
@@ -43,6 +45,97 @@ test("starts AWS Emulator in Docker and returns usable connection settings", { s
     assert.deepEqual(health, { statusCode: 200, body: "ok" });
   } finally {
     await emulator.stop();
+  }
+});
+
+test("resolves nested npx packages when launched through npm exec --package", { skip: !enabled, timeout: 600_000 }, async () => {
+  const tempDirectory = await mkdtemp(path.join(os.tmpdir(), "awesome-emulator-nested-npx-"));
+  try {
+    const repositoryDirectory = fileURLToPath(new URL("../", import.meta.url));
+    const cliPackageDirectory = path.join(tempDirectory, "cli-package");
+    const fixturePackageDirectory = path.join(tempDirectory, "fixture-package");
+    const packedCliDirectory = path.join(tempDirectory, "packed-cli");
+    const packedFixtureDirectory = path.join(tempDirectory, "packed-fixture");
+    const projectDirectory = path.join(tempDirectory, "project");
+    const packCache = path.join(tempDirectory, "pack-cache");
+    const launcherCache = path.join(tempDirectory, "launcher-cache");
+    const childCache = path.join(tempDirectory, "child-cache");
+    const fixtureName = "awesome-emulator-nested-npx-fixture";
+    const fixtureVersion = "1.0.0";
+    const fixtureTarball = path.join(packedFixtureDirectory, `${fixtureName}-${fixtureVersion}.tgz`);
+    const cliManifest = JSON.parse(await readFile(path.join(repositoryDirectory, "package.json"), "utf8"));
+    const cliTarball = path.join(packedCliDirectory, `${cliManifest.name}-${cliManifest.version}.tgz`);
+
+    await Promise.all([
+      mkdir(cliPackageDirectory, { recursive: true }),
+      mkdir(fixturePackageDirectory, { recursive: true }),
+      mkdir(packedCliDirectory, { recursive: true }),
+      mkdir(packedFixtureDirectory, { recursive: true }),
+      mkdir(projectDirectory, { recursive: true }),
+    ]);
+    await cp(path.join(repositoryDirectory, "bin"), path.join(cliPackageDirectory, "bin"), { recursive: true });
+    await cp(path.join(repositoryDirectory, "dist"), path.join(cliPackageDirectory, "dist"), { recursive: true });
+    await writeFile(path.join(cliPackageDirectory, "package.json"), JSON.stringify({
+      name: cliManifest.name,
+      version: cliManifest.version,
+      type: cliManifest.type,
+      bin: cliManifest.bin,
+      files: ["bin/", "dist/"],
+    }));
+    await writeFile(path.join(fixturePackageDirectory, "package.json"), JSON.stringify({
+      name: fixtureName,
+      version: fixtureVersion,
+      bin: { [fixtureName]: "./bin.js" },
+    }));
+    await writeFile(path.join(fixturePackageDirectory, "bin.js"), "#!/usr/bin/env node\nconsole.log(`nested-npx-ok:${process.argv.slice(2).join(' ')}`);\n", { mode: 0o755 });
+
+    const npmEnvironment = { ...process.env };
+    for (const key of Object.keys(npmEnvironment)) {
+      if (["npm_config_package", "npm_config_cache"].includes(key.toLowerCase())) delete npmEnvironment[key];
+    }
+    npmEnvironment.npm_config_cache = packCache;
+    const packCli = spawnSync("npm", ["pack", "--ignore-scripts", "--pack-destination", packedCliDirectory], {
+      cwd: cliPackageDirectory,
+      env: npmEnvironment,
+      encoding: "utf8",
+      maxBuffer: 1024 * 1024,
+    });
+    assert.equal(packCli.status, 0, `could not pack CLI fixture:\n${packCli.stdout}\n${packCli.stderr}`);
+    const packFixture = spawnSync("npm", ["pack", "--ignore-scripts", "--pack-destination", packedFixtureDirectory], {
+      cwd: fixturePackageDirectory,
+      env: npmEnvironment,
+      encoding: "utf8",
+      maxBuffer: 1024 * 1024,
+    });
+    assert.equal(packFixture.status, 0, `could not pack nested npx fixture:\n${packFixture.stdout}\n${packFixture.stderr}`);
+    await assert.rejects(access(childCache), { code: "ENOENT" }, "nested npx should start with an empty npm cache");
+
+    const nestedNpxScript = [
+      "const { spawnSync } = require('node:child_process')",
+      "const [packageSpec, cache] = process.argv.slice(1)",
+      "if (process.env.npm_config_package) process.exit(42)",
+      "const env = { ...process.env, npm_config_cache: cache }",
+      "const nested = spawnSync('npx', ['--yes', packageSpec, 'hello'], { env, encoding: 'utf8' })",
+      "process.stdout.write(nested.stdout || '')",
+      "process.stderr.write(nested.stderr || '')",
+      "process.exit(nested.status ?? 1)",
+    ].join("; ");
+    const wrappedRun = spawnSync("npm", [
+      "exec", "--yes", `--package=${cliTarball}`, "--",
+      "awesome-emulator", "run", "--port", "0", "--telemetry", "off", "--",
+      process.execPath, "-e", nestedNpxScript, `${fixtureName}@file:${fixtureTarball}`, childCache,
+    ], {
+      cwd: projectDirectory,
+      env: { ...npmEnvironment, npm_config_cache: launcherCache },
+      encoding: "utf8",
+      maxBuffer: 1024 * 1024,
+      timeout: 600_000,
+    });
+
+    assert.equal(wrappedRun.status, 0, `wrapped nested npx failed:\n${wrappedRun.stdout}\n${wrappedRun.stderr}`);
+    assert.match(wrappedRun.stdout, /nested-npx-ok:hello/);
+  } finally {
+    await rm(tempDirectory, { recursive: true, force: true });
   }
 });
 

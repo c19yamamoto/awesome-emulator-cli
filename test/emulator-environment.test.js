@@ -74,6 +74,28 @@ test("sets both child region variables when an explicit region is provided", () 
   assert.equal(child.AWS_ENDPOINT_URL, emulator.endpointUrl);
 });
 
+test("removes npm exec package selection while preserving user npm registry and proxy settings", () => {
+  const child = createChildEnvironment({
+    npm_config_package: "awesome-emulator-cli",
+    npm_config_registry: "https://registry.example.test/",
+    npm_config_proxy: "http://proxy.example.test:8080",
+  }, emulator.environment);
+
+  assert.equal(child.npm_config_package, undefined);
+  assert.equal(child.npm_config_registry, "https://registry.example.test/");
+  assert.equal(child.npm_config_proxy, "http://proxy.example.test:8080");
+});
+
+test("filters npm exec package selection case-insensitively on Windows", () => {
+  const child = createChildEnvironment({
+    NPM_CONFIG_PACKAGE: "awesome-emulator-cli",
+    NPM_CONFIG_REGISTRY: "https://registry.example.test/",
+  }, emulator.environment, { platform: "win32" });
+
+  assert.equal(child.NPM_CONFIG_PACKAGE, undefined);
+  assert.equal(child.NPM_CONFIG_REGISTRY, "https://registry.example.test/");
+});
+
 test("rejects an empty child region", () => {
   assert.throws(
     () => createChildEnvironment({}, emulator.environment, { region: "   " }),
