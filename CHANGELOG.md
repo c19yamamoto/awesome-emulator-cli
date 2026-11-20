@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.6.0](https://github.com/c19yamamoto/awesome-emulator-cli/compare/v0.5.1...v0.6.0) (2026-11-20)
+
+
+### Features
+
+* **cli:** expose emulator credentials and TLS paths ([#57](https://github.com/c19yamamoto/awesome-emulator-cli/issues/57)) ([522f497](https://github.com/c19yamamoto/awesome-emulator-cli/commit/522f497cb63ebe802e280b65a3a7b938eebb6c79))
+* **cli:** support a configurable emulator state directory ([#56](https://github.com/c19yamamoto/awesome-emulator-cli/issues/56)) ([0e71e37](https://github.com/c19yamamoto/awesome-emulator-cli/commit/0e71e37c6027dad8e5acd382718a7eb43060d928))
+
+
+### Bug Fixes
+
+* **cli:** isolate nested npx package resolution ([#60](https://github.com/c19yamamoto/awesome-emulator-cli/issues/60)) ([9acf7cd](https://github.com/c19yamamoto/awesome-emulator-cli/commit/9acf7cda6ec5c22beb2fd5c5a488f243a3e05689))
+
 ## [0.5.1](https://github.com/c19yamamoto/awesome-emulator-cli/compare/v0.5.0...v0.5.1) (2026-11-20)
 
 
