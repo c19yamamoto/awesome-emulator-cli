@@ -261,8 +261,9 @@ export async function upEmulatorSession(
     });
     if (init && initOptions) {
       const childEnvironment = createChildEnvironment(process.env, emulator.environment, initOptions);
-      const exitCode = await runCommand(init.command, init.args ?? [], childEnvironment, options.signal, init.shell ?? false);
+      const exitCode = await runCommand(init.command, init.args ?? [], childEnvironment, options.signal, init.shell ?? false, "stderr");
       if (exitCode !== 0) {
+        throwIfAborted(options.signal);
         throw new Error(`Emulator session "${name}" initialization command failed with exit code ${exitCode}.`);
       }
     }

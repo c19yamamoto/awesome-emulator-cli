@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
@@ -37,6 +38,16 @@ test("passes shell metacharacters as literal argument data by default", async ()
     await rm(directory, { recursive: true, force: true });
     await rm(markerPath, { force: true });
   }
+});
+
+test("can route child stdout to stderr to preserve a machine-readable parent stdout", () => {
+  const processModuleUrl = new URL("../dist/process.js", import.meta.url).href;
+  const source = `import { runCommand } from ${JSON.stringify(processModuleUrl)}; await runCommand(process.execPath, ["-e", "process.stdout.write('initializer output')"], process.env, undefined, false, "stderr");`;
+  const result = spawnSync(process.execPath, ["--input-type=module", "-e", source], { encoding: "utf8" });
+
+  assert.equal(result.status, 0);
+  assert.equal(result.stdout, "");
+  assert.equal(result.stderr, "initializer output");
 });
 
 test(

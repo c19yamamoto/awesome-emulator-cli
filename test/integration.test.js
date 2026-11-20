@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { access, readFile } from "node:fs/promises";
+import { access, readFile, rm } from "node:fs/promises";
 import https from "node:https";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
 import { downEmulatorSession, execEmulatorSession, startEmulator, upEmulatorSession } from "../dist/index.js";
 
@@ -85,4 +87,47 @@ test("cleans up a persistent session when initialization fails", { skip: !enable
     init: { command: process.execPath, args: ["-e", "process.exit(17)"] },
   }), /initialization command failed with exit code 17/);
   await assert.rejects(downEmulatorSession(name), /was not found/);
+});
+
+test("preserves signal cancellation and cleans up during initialization", { skip: !enabled }, async () => {
+  const name = `integration-${randomUUID()}`;
+  const marker = path.join(os.tmpdir(), `awesome-emulator-init-${randomUUID()}`);
+  const controller = new AbortController();
+  const starting = upEmulatorSession(name, {
+    port: 0,
+    telemetry: "off",
+    startupTimeoutMs: 300_000,
+    signal: controller.signal,
+    init: {
+      command: process.execPath,
+      args: ["-e", "require('node:fs').writeFileSync(process.argv[1], 'started'); setTimeout(() => {}, 30_000)", marker],
+    },
+  });
+
+  try {
+    const deadline = Date.now() + 300_000;
+    const waitForMarker = async () => {
+      while (Date.now() < deadline) {
+        try {
+          await access(marker);
+          return true;
+        } catch {
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+      }
+      return false;
+    };
+    const initialized = await Promise.race([
+      waitForMarker(),
+      starting.then(() => new Promise(() => {})),
+    ]);
+    assert.equal(initialized, true, "initializer should start after the emulator becomes healthy");
+    controller.abort("SIGINT");
+    await assert.rejects(starting, (error) => error instanceof Error && error.name === "AbortError");
+    await assert.rejects(downEmulatorSession(name), /was not found/);
+  } finally {
+    controller.abort("SIGINT");
+    await starting.catch(() => {});
+    await rm(marker, { force: true });
+  }
 });
