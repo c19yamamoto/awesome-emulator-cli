@@ -6,8 +6,6 @@
 
 Awesome Emulator CLI for use with AWS Emulator in local tests from npm scripts or Node.js. It runs the upstream Linux package in Docker.
 
-[npm profile: @c19yamamoto](https://www.npmjs.com/~c19yamamoto)
-
 This is an independent project and is not affiliated with or endorsed by Amazon Web Services.
 
 ## Requirements
