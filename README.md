@@ -111,6 +111,8 @@ npx awesome-emulator down --session ci-tests
 
 In CI, put the final `down` command in an always-run cleanup step so the container is removed even when a test step fails. Each CI job should use its own session name. `up` prints the connection settings as JSON; it does not print the container ID or credential values.
 
+Persistent sessions use `ps` on Unix or Windows PowerShell on Windows to distinguish an active startup from an abandoned session record.
+
 ## Use from Node.js
 
 Use the API when your test harness needs to control the emulator lifecycle directly:

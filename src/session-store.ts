@@ -11,7 +11,7 @@ export type StartingSessionRecord = {
   state: "starting";
   containerName: string;
   ownerPid: number;
-  ownerStartMarker?: string;
+  ownerStartMarker: string;
 };
 
 export type RunningSessionRecord = {
@@ -63,10 +63,11 @@ function isProcessRunning(pid: number): boolean {
 
 export function isSessionOwnerRunning(record: StartingSessionRecord): boolean {
   const currentStartMarker = getProcessStartMarker(record.ownerPid);
-  if (record.ownerStartMarker && currentStartMarker) {
-    return record.ownerStartMarker === currentStartMarker;
+  if (currentStartMarker) return record.ownerStartMarker === currentStartMarker;
+  if (isProcessRunning(record.ownerPid)) {
+    throw new Error(`Could not verify the owner process for emulator session "${record.name}". Ensure ${process.platform === "win32" ? "Windows PowerShell" : "ps"} is available, then retry.`);
   }
-  return isProcessRunning(record.ownerPid);
+  return false;
 }
 
 function sessionPath(stateDirectory: string, name: string): string {
@@ -79,6 +80,10 @@ export async function reserveSession(
   containerName: string,
 ): Promise<string> {
   const filename = sessionPath(stateDirectory, name);
+  const ownerStartMarker = getProcessStartMarker(process.pid);
+  if (!ownerStartMarker) {
+    throw new Error(`Could not identify the startup process. Ensure ${process.platform === "win32" ? "Windows PowerShell" : "ps"} is available to manage persistent sessions.`);
+  }
   const directory = path.dirname(filename);
   await mkdir(directory, { recursive: true, mode: 0o700 });
   if (process.platform !== "win32") await chmod(directory, 0o700);
@@ -88,7 +93,7 @@ export async function reserveSession(
     state: "starting",
     containerName,
     ownerPid: process.pid,
-    ownerStartMarker: getProcessStartMarker(process.pid),
+    ownerStartMarker,
   };
   try {
     await writeFile(filename, `${JSON.stringify(record)}\n`, { flag: "wx", mode: 0o600 });
@@ -154,7 +159,8 @@ function isSessionRecord(value: unknown, expectedName: string): value is Session
   if (record.state === "starting") {
     return Number.isSafeInteger(record.ownerPid)
       && Number(record.ownerPid) > 0
-      && (record.ownerStartMarker === undefined || (typeof record.ownerStartMarker === "string" && record.ownerStartMarker.length > 0));
+      && typeof record.ownerStartMarker === "string"
+      && record.ownerStartMarker.length > 0;
   }
   if (record.state !== "running") return false;
   return typeof record.containerId === "string"
