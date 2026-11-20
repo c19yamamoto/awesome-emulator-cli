@@ -1,0 +1,9 @@
+[package]
+name = "aws-emulator-sdk-smoke"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+aws-config = "=1.13.3"
+aws-sdk-sts = "=1.128.0"
+tokio = { version = "=1.54.1", features = ["macros", "rt-multi-thread"] }

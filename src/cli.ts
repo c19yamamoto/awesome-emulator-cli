@@ -3,25 +3,28 @@
 import { prepareEmulatorImage, runWithEmulator, startEmulator, type StartEmulatorOptions } from "./index.js";
 import { DEFAULT_VERSION } from "./emulator-options.js";
 import { FORWARDED_SIGNALS, getSignalExitCode, type ForwardedSignal } from "./signals.js";
+import { SUPPORTED_EMULATOR_SDKS, type EmulatorSdk } from "./emulator-environment.js";
 
 type ParsedArgs =
   | { help: true }
   | { help: false; command?: string; options: CliOptions; commandArgs: string[] };
 
 type CliValueOption = keyof Pick<StartEmulatorOptions, "version" | "port" | "telemetry" | "memory">;
-type CliOptions = Pick<StartEmulatorOptions, CliValueOption> & { shell?: boolean };
+type CliOptions = Pick<StartEmulatorOptions, CliValueOption> & { shell?: boolean; sdks?: EmulatorSdk[] };
 
 function usage() {
   console.log(`Usage:
   awesome-emulator prepare [--version <version>]
   awesome-emulator start [options]
-  awesome-emulator run [options] [--shell] -- <command> [args...]
+  awesome-emulator run [options] [--sdk <family>]... [--shell] -- <command> [args...]
 
 Options:
   -v, --version <version>     AWS Emulator version (default: ${DEFAULT_VERSION})
   -p, --port <port>           (start/run) Host port; 0 chooses an available port (default: 9297)
   -t, --telemetry <on|off>    (start/run) Telemetry setting (default: on)
       --memory <limit>        (start/run) Container memory limit (default: 2g)
+      --sdk <family>          (run only) Add SDK-specific TLS settings; repeatable
+                              (${SUPPORTED_EMULATOR_SDKS.join(", ")})
       --shell                 (run only) Enable .cmd/.bat and built-ins; trusted values only
   -h, --help                  Show this help`);
 }
@@ -46,6 +49,18 @@ function parse(argv: string[]): ParsedArgs {
     if (token === "--shell") {
       if (command !== "run") throw new Error("--shell can only be used with the run command.");
       options.shell = true;
+      continue;
+    }
+    if (token === "--sdk") {
+      if (command !== "run") throw new Error("--sdk can only be used with the run command.");
+      const value = argv[index + 1];
+      if (!value || value.startsWith("--")) throw new Error("Missing value for --sdk");
+      if (!(SUPPORTED_EMULATOR_SDKS as readonly string[]).includes(value)) {
+        throw new Error(`Unsupported SDK: ${value}. Choose from ${SUPPORTED_EMULATOR_SDKS.join(", ")}.`);
+      }
+      options.sdks ??= [];
+      options.sdks.push(value as EmulatorSdk);
+      index += 1;
       continue;
     }
     const optionNames: Record<string, CliValueOption> = {

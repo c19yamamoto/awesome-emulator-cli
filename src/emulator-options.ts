@@ -1,3 +1,5 @@
+import type { EmulatorSdk } from "./emulator-environment.js";
+
 export type StartEmulatorOptions = {
   version?: string;
   port?: number | string;
@@ -14,6 +16,8 @@ export type RunWithEmulatorOptions = StartEmulatorOptions & {
    * Defaults to false.
    */
   shell?: boolean;
+  /** Add SDK-specific TLS settings for the selected SDK families. */
+  sdks?: EmulatorSdk[];
 };
 
 export type PrepareEmulatorOptions = Pick<StartEmulatorOptions, "version" | "signal">;

@@ -6,7 +6,12 @@ import os from "node:os";
 import path from "node:path";
 import { createRetryableStop, startContainer, stopContainer, withEmulator } from "./container-lifecycle.js";
 import { docker, throwIfAborted } from "./docker.js";
-import { createChildEnvironment, createEmulatorConnectionSettings, type EmulatorEnvironment } from "./emulator-environment.js";
+import {
+  createChildEnvironment,
+  createEmulatorConnectionSettings,
+  normalizeEmulatorSdks,
+  type EmulatorEnvironment,
+} from "./emulator-environment.js";
 import { ensureEmulatorImage, getArchitecture, type EmulatorArchitecture } from "./emulator-image.js";
 import {
   resolveEmulatorOptions,
@@ -18,7 +23,7 @@ import {
 import { runCommand } from "./process.js";
 
 export type { PrepareEmulatorOptions, RunWithEmulatorOptions, StartEmulatorOptions } from "./emulator-options.js";
-export type { EmulatorEnvironment } from "./emulator-environment.js";
+export type { EmulatorEnvironment, EmulatorSdk } from "./emulator-environment.js";
 
 export type EmulatorSession = {
   version: string;
@@ -205,9 +210,10 @@ export async function startEmulator(options: StartEmulatorOptions = {}): Promise
  */
 export async function runWithEmulator(command: string, args: string[] = [], options: RunWithEmulatorOptions = {}): Promise<number> {
   if (!command) throw new Error("A command is required.");
-  const { shell = false, ...emulatorOptions } = options;
+  const { shell = false, sdks: requestedSdks = [], ...emulatorOptions } = options;
+  const sdks = normalizeEmulatorSdks(requestedSdks);
   return withEmulator(() => startEmulator(emulatorOptions), async (emulator) => {
-    const childEnvironment = createChildEnvironment(process.env, emulator.environment);
+    const childEnvironment = createChildEnvironment(process.env, emulator.environment, sdks);
     return runCommand(command, args, childEnvironment, emulatorOptions.signal, shell);
   });
 }

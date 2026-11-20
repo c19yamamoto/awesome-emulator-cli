@@ -1,0 +1,8 @@
+{
+  "name": "awesome-emulator-sdk-smoke",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@aws-sdk/client-sts": "^3.958.0"
+  }
+}

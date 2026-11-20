@@ -1,0 +1,76 @@
+name: SDK smoke
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sdk-smoke:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: 26
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            examples/sdk-smoke/javascript/package-lock.json
+
+      - uses: actions/setup-python@v7.1.0
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: examples/sdk-smoke/python/requirements.txt
+
+      - uses: actions/setup-java@v6.3.0
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      - uses: actions/setup-go@v7.1.0
+        with:
+          go-version: "1.25.x"
+          cache-dependency-path: examples/sdk-smoke/go/go.sum
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v2.0.1
+        with:
+          toolchain: stable
+
+      - uses: actions/setup-dotnet@v6.1.0
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Build the CLI
+        run: npm ci && npm run build
+
+      - name: Install SDK smoke dependencies
+        run: |
+          python -m pip install -r examples/sdk-smoke/python/requirements.txt
+          npm ci --prefix examples/sdk-smoke/javascript
+          mvn -B -f examples/sdk-smoke/java/pom.xml package dependency:build-classpath -Dmdep.outputFile=target/classpath.txt
+          (cd examples/sdk-smoke/go && go mod download && go build ./...)
+          cargo build --locked --manifest-path examples/sdk-smoke/rust/Cargo.toml
+          dotnet restore examples/sdk-smoke/dotnet/Smoke.csproj
+          dotnet build --no-restore examples/sdk-smoke/dotnet/Smoke.csproj
+          aws --version
+
+      - name: Run SDK smoke checks
+        env:
+          AWS_ACCESS_KEY_ID: host-credentials-must-not-leak
+          AWS_SECRET_ACCESS_KEY: host-credentials-must-not-leak
+          AWS_SESSION_TOKEN: host-credentials-must-not-leak
+          AWS_PROFILE: host-profile-must-not-leak
+          AWS_ENDPOINT_URL_STS: https://must-not-override-the-emulator.invalid
+          AWS_ENDPOINT_URL_PREFIX: https://must-not-prefix-the-emulator.invalid
+        run: node bin/awesome-emulator.js run --telemetry off --sdk java-v2 --sdk rust --sdk dotnet -- bash examples/sdk-smoke/run.sh
