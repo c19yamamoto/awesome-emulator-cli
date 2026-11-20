@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.4.0](https://github.com/c19yamamoto/awesome-emulator-cli/compare/v0.3.0...v0.4.0) (2026-11-20)
+
+
+### Features
+
+* allow setting child command region ([#41](https://github.com/c19yamamoto/awesome-emulator-cli/issues/41)) ([29fcd18](https://github.com/c19yamamoto/awesome-emulator-cli/commit/29fcd18b1cfd4b1548d248c8278a20555e616784))
+* support AWS SDKs in non-Node CI projects ([#40](https://github.com/c19yamamoto/awesome-emulator-cli/issues/40)) ([9dfd01a](https://github.com/c19yamamoto/awesome-emulator-cli/commit/9dfd01a6dfc9df411ebc0019c0f0eb362660b69e))
+
+
+### Bug Fixes
+
+* **release:** publish emulator version updates as patch releases ([#37](https://github.com/c19yamamoto/awesome-emulator-cli/issues/37)) ([fdf8b04](https://github.com/c19yamamoto/awesome-emulator-cli/commit/fdf8b04f34feb08b45701831af214e6ab8e2571b))
+
 ## [0.3.0](https://github.com/c19yamamoto/awesome-emulator-cli/compare/v0.2.0...v0.3.0) (2026-11-20)
 
 
