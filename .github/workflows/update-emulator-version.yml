@@ -37,12 +37,13 @@ jobs:
           git commit -m "$title" -m "Release-As: $RELEASE_AS"
           git push --force origin "HEAD:refs/heads/$BRANCH"
 
-          body="Updates the wrapper's default AWS Emulator version to v$VERSION. CI validates the new version before the wrapper release. Preserve the Release-As footer when squash-merging to request the next minor wrapper release ($RELEASE_AS).
-
-Release-As: $RELEASE_AS"
+          body="$(printf '%s\n%s\n\n%s\n' \
+            "Updates the wrapper's default AWS Emulator version to v$VERSION. CI validates the new version before the wrapper release." \
+            "Preserve the Release-As footer when squash-merging to request the next minor wrapper release ($RELEASE_AS)." \
+            "Release-As: $RELEASE_AS")"
           pr_number="$(gh pr list --state open --head "$GITHUB_REPOSITORY_OWNER:$BRANCH" --json number --jq '.[0].number')"
           if [ -n "$pr_number" ]; then
-            gh pr edit "$pr_number" --title "$title" --body "$body"
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/pulls/$pr_number" --raw-field "title=$title" --raw-field "body=$body"
           else
             gh pr create --base main --head "$BRANCH" --title "$title" --body "$body"
           fi
