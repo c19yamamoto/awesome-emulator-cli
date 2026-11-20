@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.0](https://github.com/c19yamamoto/awesome-emulator-cli/compare/v0.4.0...v0.5.0) (2026-11-20)
+
+
+### Features
+
+* add emulator initialization hook ([#45](https://github.com/c19yamamoto/awesome-emulator-cli/issues/45)) ([5aa2670](https://github.com/c19yamamoto/awesome-emulator-cli/commit/5aa2670d1a05e723f28463f320b934ae576d7247))
+* add managed emulator sessions ([#44](https://github.com/c19yamamoto/awesome-emulator-cli/issues/44)) ([ceb1373](https://github.com/c19yamamoto/awesome-emulator-cli/commit/ceb137345e946e7e953974aef7ca4efd0cd52066))
+
 ## [0.4.0](https://github.com/c19yamamoto/awesome-emulator-cli/compare/v0.3.0...v0.4.0) (2026-11-20)
 
 
