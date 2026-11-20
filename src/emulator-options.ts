@@ -2,6 +2,16 @@ import type { EmulatorSdk } from "./emulator-environment.js";
 import os from "node:os";
 import path from "node:path";
 
+export type EmulatorCredentialsMode = "files" | "environment";
+
+export function resolveEmulatorCredentialsMode(value: string | undefined): EmulatorCredentialsMode {
+  const mode = value ?? "files";
+  if (mode !== "files" && mode !== "environment") {
+    throw new Error("Credentials mode must be files or environment.");
+  }
+  return mode;
+}
+
 export type StartEmulatorOptions = {
   version?: string;
   stateDirectory?: string;
@@ -23,6 +33,8 @@ export type RunWithEmulatorOptions = StartEmulatorOptions & {
   region?: string;
   /** Add SDK-specific TLS settings for the selected SDK families. */
   sdks?: EmulatorSdk[];
+  /** Pass Emulator-generated credentials through AWS credential environment variables instead of relying only on files. */
+  credentials?: EmulatorCredentialsMode;
 };
 
 export type PrepareEmulatorOptions = Pick<StartEmulatorOptions, "version" | "signal">;

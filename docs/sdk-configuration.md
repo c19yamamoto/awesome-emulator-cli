@@ -2,6 +2,10 @@
 
 `run`, `exec`, and `up --init` give the child command the emulator endpoint, local credentials and config files, CA settings, and AWS region. The CLI removes inherited credential variables, profiles, and service-specific endpoint variables so host settings do not redirect or authenticate the test. Explicit credentials or endpoints in project code or build configuration must still be configured for the emulator.
 
+The child environment includes `AWS_EMULATOR_CA_FILE` and `AWS_EMULATOR_TRUSTSTORE_FILE` with the paths to the generated CA certificate and Java PKCS12 truststore. Use these when build tooling needs to configure a specific test process rather than every process launched by the command.
+
+Credentials remain file-based by default. Pass `--credentials env` to `run`, `exec`, or `up --init` to read the emulator's `[default]` credentials and set `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and the optional `AWS_SESSION_TOKEN` for that child command. This mode never copies credentials inherited from the host. The credentials are then available to descendants of the command, so enable it only when those processes should receive them. The emulator doesn't create a credentials file when authentication is disabled, so this mode requires authentication to be on.
+
 The CLI enables `AWS_DISABLE_HOST_PREFIX_INJECTION` for SDKs that might otherwise rewrite the local endpoint.
 
 ## TLS settings by SDK
@@ -20,7 +24,19 @@ Most SDKs use the standard settings automatically. Pass `--sdk` only when a comm
 
 ## Java 2.x
 
-The Java truststore is applied through `JAVA_TOOL_OPTIONS` to every JVM started by the child command, including Maven or Gradle and test workers. Resolve dependencies before running the wrapped command, or use a truststore containing both the emulator certificate and any other roots the build needs. The emulator truststore contains only the emulator certificate, so remote HTTPS calls can fail while it is active.
+With `--sdk java-v2`, the Java truststore is applied through `JAVA_TOOL_OPTIONS` to every JVM started by the child command, including Maven or Gradle and test workers. Resolve dependencies before running the wrapped command, or use a truststore containing both the emulator certificate and any other roots the build needs. The emulator truststore contains only the emulator certificate, so remote HTTPS calls can fail while it is active.
+
+For Gradle builds that need TLS configuration only in test workers, use `AWS_EMULATOR_TRUSTSTORE_FILE` in the `Test` task configuration instead of `--sdk java-v2`:
+
+```groovy
+def emulatorTrustStore = System.getenv("AWS_EMULATOR_TRUSTSTORE_FILE")
+if (emulatorTrustStore != null) {
+    tasks.withType(Test).configureEach {
+        systemProperty("javax.net.ssl.trustStore", emulatorTrustStore)
+        systemProperty("javax.net.ssl.trustStoreType", "PKCS12")
+    }
+}
+```
 
 The CLI preserves an existing `javax.net.ssl.trustStore` in `JAVA_TOOL_OPTIONS`, `JDK_JAVA_OPTIONS`, or `_JAVA_OPTIONS`. If only `javax.net.ssl.trustStoreType=PKCS12` is set, it adds the emulator truststore and preserves the type. An incompatible truststore type requires a custom truststore path, and that truststore must trust the emulator. `MAVEN_OPTS` and `GRADLE_OPTS` stay in their own variables; check separately configured truststores there.
 

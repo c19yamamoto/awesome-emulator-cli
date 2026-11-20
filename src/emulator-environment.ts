@@ -2,6 +2,8 @@ import path from "node:path";
 
 export type EmulatorEnvironment = {
   AWS_EMULATOR_STATE_DIR: string;
+  AWS_EMULATOR_CA_FILE: string;
+  AWS_EMULATOR_TRUSTSTORE_FILE: string;
   AWS_ENDPOINT_URL: string;
   AWS_SHARED_CREDENTIALS_FILE: string;
   AWS_CONFIG_FILE: string;
@@ -99,6 +101,8 @@ export function createEmulatorConnectionSettings(port: number, stateDirectory: s
   const portDirectory = path.join(stateDirectory, String(port));
   const environment: EmulatorEnvironment = {
     AWS_EMULATOR_STATE_DIR: stateDirectory,
+    AWS_EMULATOR_CA_FILE: path.join(portDirectory, "ca.pem"),
+    AWS_EMULATOR_TRUSTSTORE_FILE: path.join(portDirectory, "truststore.p12"),
     AWS_ENDPOINT_URL: endpointUrl,
     AWS_SHARED_CREDENTIALS_FILE: path.join(portDirectory, "emulator_credentials"),
     AWS_CONFIG_FILE: path.join(portDirectory, "config"),
