@@ -56,12 +56,19 @@ jobs:
           key: emulator-image-${{ runner.os }}-${{ runner.arch }}-${{ steps.emulator-image.outputs.tag }}-${{ steps.emulator-cache-period.outputs.week }}
       - name: Load cached emulator image
         if: steps.emulator-image-cache.outputs.cache-hit == 'true'
-        run: docker load --input "$RUNNER_TEMP/aws-emulator-image.tar"
+        env:
+          IMAGE_TAG: ${{ steps.emulator-image.outputs.tag }}
+        run: |
+          if ! docker load --input "$RUNNER_TEMP/aws-emulator-image.tar"; then
+            echo "Cached image could not be loaded; integration will rebuild it."
+            docker image rm "$IMAGE_TAG" >/dev/null 2>&1 || true
+          fi
       - run: npm run test:integration
         env:
           AWS_EMULATOR_INTEGRATION_TESTS: "1"
       - name: Save emulator image for future runs
         if: success() && steps.emulator-image-cache.outputs.cache-hit != 'true'
+        continue-on-error: true
         env:
           IMAGE_TAG: ${{ steps.emulator-image.outputs.tag }}
         run: docker save --output "$RUNNER_TEMP/aws-emulator-image.tar" "$IMAGE_TAG"
