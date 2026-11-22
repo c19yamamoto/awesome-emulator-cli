@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.6.6](https://github.com/c19yamamoto/awesome-emulator-cli/compare/v0.6.5...v0.6.6) (2026-11-22)
+
+
+### Maintenance
+
+* **deps:** bump github.com/aws/aws-sdk-go-v2/config from 1.33.19 to 1.33.20 in /examples/sdk-smoke/go in the all-sdk-smoke-gomod group ([#78](https://github.com/c19yamamoto/awesome-emulator-cli/issues/78)) ([b2a5791](https://github.com/c19yamamoto/awesome-emulator-cli/commit/b2a57919fe281d3ae8c1aa8117cc60ed6c428f72))
+* **deps:** bump software.amazon.awssdk:bom from 2.59.2 to 2.59.4 in /examples/sdk-smoke/java in the all-sdk-smoke-maven group ([#76](https://github.com/c19yamamoto/awesome-emulator-cli/issues/76)) ([0c028a6](https://github.com/c19yamamoto/awesome-emulator-cli/commit/0c028a68fc75af41653811e2e5087474cf8ec885))
+* **deps:** the all-sdk-smoke-nuget group with 1 update ([#77](https://github.com/c19yamamoto/awesome-emulator-cli/issues/77)) ([0bc1b14](https://github.com/c19yamamoto/awesome-emulator-cli/commit/0bc1b1483e5eb0c16fae0d71e805a5ba5d2586b8))
+* **emulator-version:** update AWS Emulator to v1.0.567 ([#79](https://github.com/c19yamamoto/awesome-emulator-cli/issues/79)) ([4ba7709](https://github.com/c19yamamoto/awesome-emulator-cli/commit/4ba7709ebf6b5ecdce04477d25007f07d933702b))
+
 ## [0.6.5](https://github.com/c19yamamoto/awesome-emulator-cli/compare/v0.6.4...v0.6.5) (2026-11-21)
 
 
