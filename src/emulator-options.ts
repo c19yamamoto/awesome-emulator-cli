@@ -60,7 +60,7 @@ export function resolveEmulatorStateDirectory(
   return path.resolve(workingDirectory, configuredDirectory ?? path.join(homeDirectory, ".aws", "emulator"));
 }
 
-export const DEFAULT_VERSION = "1.0.552";
+export const DEFAULT_VERSION = "1.0.567";
 const DEFAULT_PORT = 9297;
 const DEFAULT_MEMORY = "2g";
 
