@@ -6,6 +6,6 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="AWSSDK.SecurityToken" Version="4.1.1" />
+    <PackageReference Include="AWSSDK.SecurityToken" Version="4.1.1.1" />
   </ItemGroup>
 </Project>
