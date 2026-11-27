@@ -29,7 +29,9 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           REPOSITORY: ${{ github.repository }}
         run: |
-          eligible="$(gh pr view "$PR_NUMBER" --repo "$REPOSITORY" --json title,body,files,commits,headRefName,baseRefName,isDraft | node .github/scripts/auto-merge-emulator-pr.js)"
+          trusted_author="$(gh api user --jq .login)"
+          pr="$(gh pr view "$PR_NUMBER" --repo "$REPOSITORY" --json title,body,files,commits,headRefName,baseRefName,isDraft,isCrossRepository,author)"
+          eligible="$(printf '%s' "$pr" | TRUSTED_PR_AUTHOR="$trusted_author" node .github/scripts/auto-merge-emulator-pr.js)"
           echo "eligible=$eligible" >> "$GITHUB_OUTPUT"
 
       - name: Request auto-merge
@@ -39,7 +41,9 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           REPOSITORY: ${{ github.repository }}
         run: |
-          eligible="$(gh pr view "$PR_NUMBER" --repo "$REPOSITORY" --json title,body,files,commits,headRefName,baseRefName,isDraft | node .github/scripts/auto-merge-emulator-pr.js)"
+          trusted_author="$(gh api user --jq .login)"
+          pr="$(gh pr view "$PR_NUMBER" --repo "$REPOSITORY" --json title,body,files,commits,headRefName,baseRefName,isDraft,isCrossRepository,author)"
+          eligible="$(printf '%s' "$pr" | TRUSTED_PR_AUTHOR="$trusted_author" node .github/scripts/auto-merge-emulator-pr.js)"
           if [ "$eligible" != "true" ]; then
             echo "The PR changed while checks were running; leaving it open."
             exit 1

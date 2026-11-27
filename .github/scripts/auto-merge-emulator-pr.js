@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 
 const pullRequest = JSON.parse(readFileSync(0, "utf8"));
 const versionPattern = String.raw`\d+\.\d+\.\d+`;
+const trustedPullRequestAuthor = process.env.TRUSTED_PR_AUTHOR?.toLowerCase();
 
 function hasExactFiles(expectedFiles) {
   const actualFiles = pullRequest.files?.map(({ path }) => path).sort();
@@ -60,6 +61,9 @@ function isEmulatorOnlyRelease() {
 
 const eligible = pullRequest.baseRefName === "main"
   && pullRequest.isDraft === false
+  && pullRequest.isCrossRepository === false
+  && Boolean(trustedPullRequestAuthor)
+  && pullRequest.author?.login?.toLowerCase() === trustedPullRequestAuthor
   && (isEmulatorVersionUpdate() || isEmulatorOnlyRelease());
 
 process.stdout.write(`${eligible}\n`);
