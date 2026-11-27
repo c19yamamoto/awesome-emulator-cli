@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.13](https://github.com/c19yamamoto/awesome-emulator-cli/compare/v0.6.12...v0.6.13) (2026-11-27)
+
+
+### Bug Fixes
+
+* **ci:** restrict emulator auto-merge to trusted PRs ([#94](https://github.com/c19yamamoto/awesome-emulator-cli/issues/94)) ([2547f7f](https://github.com/c19yamamoto/awesome-emulator-cli/commit/2547f7fe7009b75bd5818e8aea9ff571a2fc0954))
+
 ## [0.6.12](https://github.com/c19yamamoto/awesome-emulator-cli/compare/v0.6.11...v0.6.12) (2026-11-27)
 
 
