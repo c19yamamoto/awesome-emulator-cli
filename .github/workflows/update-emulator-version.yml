@@ -7,8 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 jobs:
   update:
@@ -17,7 +16,7 @@ jobs:
       - uses: actions/checkout@v7.0.1
         with:
           ref: main
-          token: ${{ github.token }}
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
       - name: Check the latest upstream release
         id: update
         run: node scripts/update-emulator-version.js
@@ -25,7 +24,7 @@ jobs:
         if: steps.update.outputs.updated == 'true'
         env:
           BRANCH: update-aws-emulator-version
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
           VERSION: ${{ steps.update.outputs.version }}
         run: |
           git config user.name "github-actions[bot]"

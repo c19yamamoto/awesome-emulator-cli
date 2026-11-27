@@ -1,0 +1,47 @@
+name: Auto-merge emulator version updates
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, ready_for_review]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: auto-merge-emulator-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  auto-merge:
+    if: github.event.pull_request.base.ref == 'main' && github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    steps:
+      # pull_request_target runs with a write token, so only check out trusted base-branch files.
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Check whether this is an emulator-only automation PR
+        id: eligibility
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          eligible="$(gh pr view "$PR_NUMBER" --repo "$REPOSITORY" --json title,body,files,commits,headRefName,baseRefName,isDraft | node .github/scripts/auto-merge-emulator-pr.js)"
+          echo "eligible=$eligible" >> "$GITHUB_OUTPUT"
+
+      - name: Request auto-merge
+        if: steps.eligibility.outputs.eligible == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          eligible="$(gh pr view "$PR_NUMBER" --repo "$REPOSITORY" --json title,body,files,commits,headRefName,baseRefName,isDraft | node .github/scripts/auto-merge-emulator-pr.js)"
+          if [ "$eligible" != "true" ]; then
+            echo "The PR changed while checks were running; leaving it open."
+            exit 1
+          fi
+          gh pr merge "$PR_NUMBER" --repo "$REPOSITORY" --auto --squash
