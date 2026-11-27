@@ -35,9 +35,7 @@ jobs:
           git commit -m "$title"
           git push --force origin "HEAD:refs/heads/$BRANCH"
 
-          body="$(printf '%s\n%s\n\n%s\n' \
-            "Updates the wrapper's default AWS Emulator version to v$VERSION. CI validates the new version before the wrapper release." \
-            "The chore commit is included in the Maintenance changelog section and triggers a patch wrapper release.")"
+          body="Updates the wrapper's default AWS Emulator version to v$VERSION."
           pr_number="$(gh pr list --state open --head "$GITHUB_REPOSITORY_OWNER:$BRANCH" --json number --jq '.[0].number')"
           if [ -n "$pr_number" ]; then
             gh pr edit "$pr_number" --title "$title" --body "$body"
