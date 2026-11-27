@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.12](https://github.com/c19yamamoto/awesome-emulator-cli/compare/v0.6.11...v0.6.12) (2026-11-27)
+
+
+### Maintenance
+
+* **emulator-version:** update AWS Emulator to v1.0.639 ([#92](https://github.com/c19yamamoto/awesome-emulator-cli/issues/92)) ([3b7ae61](https://github.com/c19yamamoto/awesome-emulator-cli/commit/3b7ae613a154e86c9beedbb757239c2363dfe908))
+
 ## [0.6.11](https://github.com/c19yamamoto/awesome-emulator-cli/compare/v0.6.10...v0.6.11) (2026-11-27)
 
 
