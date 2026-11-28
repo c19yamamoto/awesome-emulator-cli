@@ -151,6 +151,19 @@ test("adds the Java truststore while preserving existing JVM options", () => {
   assert.equal(child.SSL_CERT_FILE, undefined);
 });
 
+test("quotes truststore paths safely and rejects paths Java cannot represent", () => {
+  const doubleQuotePath = createEmulatorConnectionSettings(9297, '/tmp/emulator"state');
+  const singleQuotePath = createEmulatorConnectionSettings(9297, "/tmp/emulator'state");
+  assert.match(createChildEnvironment({}, doubleQuotePath.environment, { sdks: ["java-v2"] }).JAVA_TOOL_OPTIONS, /'[^']*truststore\.p12'/);
+  assert.match(createChildEnvironment({}, singleQuotePath.environment, { sdks: ["java-v2"] }).JAVA_TOOL_OPTIONS, /"[^"]*truststore\.p12"/);
+
+  const newlinePath = createEmulatorConnectionSettings(9297, "/tmp/emulator\nstate");
+  assert.throws(() => createChildEnvironment({}, newlinePath.environment, { sdks: ["java-v2"] }), /cannot contain line breaks/);
+
+  const bothQuotePath = createEmulatorConnectionSettings(9297, `/tmp/emulator'"state`);
+  assert.throws(() => createChildEnvironment({}, bothQuotePath.environment, { sdks: ["java-v2"] }), /both quote characters/);
+});
+
 test("preserves an explicitly configured Java truststore for combined certificate bundles", () => {
   const javaOptions = '-Xmx1g -Djavax.net.ssl.trustStore="/tmp/combined truststore.p12" -Djavax.net.ssl.trustStoreType=PKCS12';
   const child = createChildEnvironment({ JAVA_TOOL_OPTIONS: javaOptions }, emulator.environment, { sdks: ["java-v2"] });

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -42,6 +43,21 @@ function isAvailable(command) {
   return spawnSync(command, ["--version"], { stdio: "ignore" }).status === 0;
 }
 
+function canGenerateGpgKey() {
+  const tempDir = mkdtempSync(path.join(os.tmpdir(), "gpg-agent-check-"));
+  const env = { ...process.env, GNUPGHOME: gpgPath(tempDir), LC_ALL: "C" };
+  try {
+    const result = spawnSync("gpg", [
+      "--batch", "--pinentry-mode", "loopback", "--passphrase", "",
+      "--quick-generate-key", "GPG agent availability check <check@example.invalid>", "ed25519", "sign", "0",
+    ], { encoding: "utf8", env });
+    return !result.error && result.status === 0;
+  } finally {
+    spawnSync("gpgconf", ["--homedir", gpgPath(tempDir), "--kill", "gpg-agent"], { stdio: "ignore" });
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+}
+
 function gpgPath(filePath) {
   if (process.platform !== "win32") return filePath;
   const windowsPath = /^([A-Za-z]):[\\/](.*)$/.exec(filePath);
@@ -60,7 +76,9 @@ function getFingerprint(uid, env) {
 }
 
 test("rejects an RPM signature made by an unrelated key in the downloaded bundle", {
-  skip: !isAvailable("gpg") || !isAvailable("gpgv") ? "requires gpg and gpgv" : false,
+  skip: !isAvailable("gpg") || !isAvailable("gpgv")
+    ? "requires gpg and gpgv"
+    : canGenerateGpgKey() ? false : "requires a working gpg-agent for ephemeral test keys",
 }, async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "gpg-"));
   const gnupgHome = gpgPath(tempDir);

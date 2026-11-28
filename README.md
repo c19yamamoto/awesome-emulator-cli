@@ -29,6 +29,19 @@ npx awesome-emulator run -- npm test
 npx awesome-emulator run --region ap-northeast-1 -- npm test
 ```
 
+### Check test coverage
+
+Run the same coverage gate used by the pull request workflow with Node.js 22 or later:
+
+```sh
+npm ci
+npm run coverage
+```
+
+The command writes a Markdown summary and machine-readable details to `coverage/`. C0 counts covered statements and C1 counts covered branch outcomes from V8 coverage through c8. The condition instrumenter records each atomic predicate's true/false outcomes for C2 and the short-circuit-reachable truth vectors for MCC. MCC marks a predicate skipped by JavaScript's `&&` or `||` evaluation as `x`. Per-file C1 is checked for every `src/**/*.ts` file, including files that no test imports.
+
+Coverage thresholds and the per-file C1 minimum live in [`ignore-test-path.ts`](./ignore-test-path.ts). Keep its exclusion list empty where possible. Any exclusion must name a `src/` file or directory and include a specific reason; excluded paths are omitted consistently and shown in the report. Coverage failures still produce `coverage/report.md` and the pull request check summary. C2/MCC instrumentation reports the source location and stops if it encounters an awaited compound condition, because wrapping that expression would alter its async evaluation context.
+
 Both `AWS_REGION` and `AWS_DEFAULT_REGION` default to `us-east-1`. An explicit region on an SDK client still takes precedence.
 
 The CLI removes inherited AWS credentials, profiles, and service endpoints from the child environment. Credentials or endpoints explicitly set in project or build configuration still need to target the emulator. Commands run without a shell by default; on Windows, `.cmd` and `.bat` commands need `--shell`, which should only be used with trusted arguments.

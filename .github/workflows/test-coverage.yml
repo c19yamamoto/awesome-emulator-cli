@@ -1,0 +1,105 @@
+name: Test coverage
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+jobs:
+  coverage:
+    name: Coverage thresholds
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      markdown: ${{ steps.report.outputs.markdown }}
+      coverage_result: ${{ steps.coverage.outcome }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: 26
+          cache: npm
+
+      - run: npm ci
+
+      - id: coverage
+        name: Run tests and coverage thresholds
+        continue-on-error: true
+        run: npm run coverage
+
+      - id: report
+        name: Preserve the coverage report for the comment job
+        if: always()
+        shell: bash
+        run: |
+          if [[ ! -s coverage/report.md ]]; then
+            mkdir -p coverage
+            cat > coverage/report.md <<'REPORT'
+          ## Coverage report unavailable
+
+          The coverage setup or test command failed before producing a report.
+          REPORT
+          fi
+          marker="END_COVERAGE_REPORT_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}"
+          {
+            echo "markdown<<${marker}"
+            cat coverage/report.md
+            echo "${marker}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: coverage-report
+          path: coverage/report.md
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Fail when tests or thresholds fail
+        if: always()
+        env:
+          COVERAGE_RESULT: ${{ steps.coverage.outcome }}
+        run: test "$COVERAGE_RESULT" = success
+
+  coverage-comment:
+    name: Publish coverage report
+    needs: coverage
+    if: >-
+      always() && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: 26
+          cache: npm
+
+      - run: npm ci --ignore-scripts
+
+      - run: npm run build:coverage-tools
+
+      - name: Create or update the coverage comment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          COVERAGE_REPORT: ${{ needs.coverage.outputs.markdown }}
+          COVERAGE_RESULT: ${{ needs.coverage.outputs.coverage_result }}
+        run: node .coverage-tools/scripts/coverage/publish-coverage-comment.js

@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "rootDir": ".",
+    "outDir": ".coverage-tools",
+    "declaration": false,
+    "sourceMap": false,
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "skipLibCheck": true,
+    "types": ["node"]
+  },
+  "include": ["ignore-test-path.ts", "scripts/coverage/**/*.ts"]
+}
