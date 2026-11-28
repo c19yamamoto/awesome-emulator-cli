@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -43,11 +43,11 @@ test("reserves a session with restrictive permissions and rejects duplicate name
   );
 });
 
-test("updates and reads a running session record without credential values", async (t) => {
+test("continues to read legacy v1 running session records", async (t) => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "awesome-emulator-session-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const containerName = "awesome-emulator-cli-session-abcd1234-ci-tests";
-  await reserveSession(directory, "ci-tests", containerName);
+  await mkdir(path.join(directory, "sessions"));
   await writeRunningSession(directory, {
     schemaVersion: 1,
     name: "ci-tests",
@@ -69,4 +69,24 @@ test("updates and reads a running session record without credential values", asy
   });
   await removeSession(directory, "ci-tests");
   await assert.rejects(readSession(directory, "ci-tests"), /was not found/);
+});
+
+test("round-trips v2 session records with separate host and container ports", async (t) => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "awesome-emulator-session-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const containerName = "awesome-emulator-cli-session-abcd1234-ci-tests";
+  await mkdir(path.join(directory, "sessions"));
+  const record = {
+    schemaVersion: 2,
+    name: "ci-tests",
+    state: "running",
+    containerName,
+    containerId: "a1b2c3d4e5f6",
+    version: "1.0.757",
+    port: 54321,
+    containerPort: 51234,
+  };
+
+  await writeRunningSession(directory, record);
+  assert.deepEqual(await readSession(directory, "ci-tests"), record);
 });

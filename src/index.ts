@@ -1,8 +1,9 @@
-import { randomBytes, randomInt } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import { mkdir, readFile } from "node:fs/promises";
 import https from "node:https";
 import path from "node:path";
 import { createRetryableStop, startContainer, stopContainer, withEmulator } from "./container-lifecycle.js";
+import { formatPortBinding, getPublishedPort, reserveContainerPort } from "./container-ports.js";
 import { docker, isMissingDockerResource, throwIfAborted } from "./docker.js";
 import {
   createChildEnvironment,
@@ -107,21 +108,6 @@ function requestHealth(port: number, ca: Buffer, signal?: AbortSignal): Promise<
 
 const delay = (milliseconds: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
-async function reserveContainerPort(stateDirectory: string): Promise<number> {
-  const firstEphemeralPort = 49_152;
-  for (let attempt = 0; attempt < 128; attempt += 1) {
-    const port = randomInt(firstEphemeralPort, 65_536);
-    try {
-      await mkdir(path.join(stateDirectory, String(port)), { mode: 0o700 });
-      return port;
-    } catch (error) {
-      if (error instanceof Error && "code" in error && error.code === "EEXIST") continue;
-      throw error;
-    }
-  }
-  throw new Error("Could not reserve a unique AWS Emulator container port in the state directory.");
-}
-
 type ContainerRunConfiguration = {
   architecture: EmulatorArchitecture;
   containerName: string;
@@ -159,9 +145,7 @@ function createContainerRunArguments({
     ...dockerLabels,
     "--memory", memory,
     "--memory-swap", memory,
-    "--publish", requestedPort === 0
-      ? `127.0.0.1::${containerPort}`
-      : `127.0.0.1:${requestedPort}:${containerPort}`,
+    "--publish", formatPortBinding(requestedPort, containerPort),
     "--mount", `type=bind,source=${stateDirectory},target=/home/emulator/.aws/emulator`,
     "--env", "HOME=/home/emulator",
     "--name", containerName,
@@ -169,20 +153,6 @@ function createContainerRunArguments({
     "-p", String(containerPort),
     "-t", telemetry,
   ];
-}
-
-async function getPublishedPort(containerId: string, containerPort: number, signal?: AbortSignal): Promise<number> {
-  const publishedPort = await docker([
-    "inspect",
-    "--format",
-    `{{(index (index .NetworkSettings.Ports "${containerPort}/tcp") 0).HostPort}}`,
-    containerId,
-  ], { capture: true, signal });
-  const port = Number(publishedPort);
-  if (!Number.isInteger(port) || port < 1 || port > 65535) {
-    throw new Error(`Docker did not report a valid host port for container port ${containerPort}/tcp.`);
-  }
-  return port;
 }
 
 async function isContainerRunning(containerId: string, signal?: AbortSignal): Promise<boolean> {

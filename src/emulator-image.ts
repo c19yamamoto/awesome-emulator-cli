@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { docker, isMissingDockerResource, throwIfAborted } from "./docker.js";
+import { docker, isMissingDockerResource, throwIfAborted, type DockerRunner } from "./docker.js";
 
 export type EmulatorArchitecture = { docker: "amd64" | "arm64"; rpm: "x86_64" | "aarch64" };
 
@@ -68,12 +68,13 @@ export async function ensureEmulatorImage(
   version: string,
   architecture: EmulatorArchitecture,
   signal?: AbortSignal,
+  runDocker: DockerRunner = docker,
 ): Promise<string> {
   throwIfAborted(signal);
   const dockerfile = createEmulatorDockerfile();
   const image = createEmulatorImageTag(version, architecture, dockerfile);
   try {
-    await docker(["image", "inspect", image], { capture: true, signal });
+    await runDocker(["image", "inspect", image], { capture: true, signal });
     throwIfAborted(signal);
     return image;
   } catch (error) {
@@ -87,7 +88,7 @@ export async function ensureEmulatorImage(
   try {
     throwIfAborted(signal);
     await writeFile(path.join(context, "Dockerfile"), dockerfile, "utf8");
-    await docker([
+    await runDocker([
       "build",
       "--platform", `linux/${architecture.docker}`,
       "--build-arg", `AWS_EMULATOR_VERSION=${version}`,
