@@ -44,6 +44,7 @@ test("rejects unsupported and command-ineligible options", () => {
 
 test("parses every declared option in a supported command context", () => {
   const values = {
+    backend: "native",
     version: "1.2.3",
     port: "0",
     telemetry: "off",

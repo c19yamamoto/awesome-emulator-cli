@@ -88,13 +88,13 @@ test("rejects missing child commands and unknown commands", async () => {
 
 test("handles prepare and persistent-session commands", async () => {
   const { values } = await withConsole("log", async () => {
-    assert.equal(await runCli(["prepare", "--version", "1.0.5"], new AbortController().signal), 0);
+    assert.equal(await runCli(["prepare", "--backend", "native", "--version", "1.0.5"], new AbortController().signal), 0);
     assert.equal(await runCli(["up", "--session", "ci-tests", "--init", "--region", "us-west-2", "--", "node", "seed.js"], new AbortController().signal), 0);
     assert.equal(await runCli(["exec", "--session", "ci-tests", "--", "node", "check.js"], new AbortController().signal), 0);
     assert.equal(await runCli(["down", "--session", "ci-tests"], new AbortController().signal), 0);
   });
   assert.match(values[0], /image:ready/);
-  assert.deepEqual(calls[0], ["prepare", { version: "1.0.5", signal: calls[0][1].signal }]);
+  assert.deepEqual(calls[0], ["prepare", { backend: "native", version: "1.0.5", signal: calls[0][1].signal }]);
   assert.equal(calls[1][2].init.command, "node");
   assert.deepEqual(calls[1][2].init.args, ["seed.js"]);
   assert.equal(calls[1][2].init.region, "us-west-2");
