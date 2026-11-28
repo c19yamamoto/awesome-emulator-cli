@@ -1,4 +1,4 @@
-name: Publish to npm
+name: Publish packages
 
 on:
   push:
@@ -6,11 +6,13 @@ on:
 
 permissions:
   contents: read
-  id-token: write
 
 jobs:
   publish:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: actions/setup-node@v7.1.0
@@ -19,9 +21,33 @@ jobs:
           registry-url: https://registry.npmjs.org
           package-manager-cache: false
       - run: npm ci
-      - run: npm test
+      - run: npm run test:unit
       - run: npm run check:release-version
       - run: npm run test:integration
         env:
           AWS_EMULATOR_INTEGRATION_TESTS: "1"
       - run: npm publish --access public
+
+  publish-github:
+    name: Publish to GitHub Packages
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: 26
+          registry-url: https://npm.pkg.github.com
+          scope: '@c19yamamoto'
+          package-manager-cache: false
+      - run: npm ci
+      - run: npm run check:release-version
+      - name: Set GitHub Packages metadata
+        run: npm pkg set name=@c19yamamoto/awesome-emulator-cli publishConfig.registry=https://npm.pkg.github.com
+      - name: Publish scoped package
+        run: npm publish --registry=https://npm.pkg.github.com
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

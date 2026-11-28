@@ -1,6 +1,9 @@
 import path from "node:path";
 
 export type EmulatorEnvironment = {
+  AWS_EMULATOR_STATE_DIR: string;
+  AWS_EMULATOR_CA_FILE: string;
+  AWS_EMULATOR_TRUSTSTORE_FILE: string;
   AWS_ENDPOINT_URL: string;
   AWS_SHARED_CREDENTIALS_FILE: string;
   AWS_CONFIG_FILE: string;
@@ -70,6 +73,9 @@ const JAVA_OPTION_ENVIRONMENT_KEYS = [
   "SBT_OPTS",
 ] as const;
 
+// npm exec --package exports its selector to children; nested npx must use its own requested package.
+const NPM_LAUNCHER_ENVIRONMENT_KEYS = ["npm_config_package"] as const;
+
 const JVM_WIDE_JAVA_OPTION_ENVIRONMENT_KEYS = [
   "JAVA_TOOL_OPTIONS",
   "JDK_JAVA_OPTIONS",
@@ -90,10 +96,17 @@ export function resolveAwsRegion(region: string | undefined, defaultRegion = DEF
   return resolvedRegion;
 }
 
-export function createEmulatorConnectionSettings(port: number, stateDirectory: string): EmulatorConnectionSettings {
-  const endpointUrl = `https://127.0.0.1:${port}`;
-  const portDirectory = path.join(stateDirectory, String(port));
+export function createEmulatorConnectionSettings(
+  hostPort: number,
+  stateDirectory: string,
+  containerPort = hostPort,
+): EmulatorConnectionSettings {
+  const endpointUrl = `https://127.0.0.1:${hostPort}`;
+  const portDirectory = path.join(stateDirectory, String(containerPort));
   const environment: EmulatorEnvironment = {
+    AWS_EMULATOR_STATE_DIR: stateDirectory,
+    AWS_EMULATOR_CA_FILE: path.join(portDirectory, "ca.pem"),
+    AWS_EMULATOR_TRUSTSTORE_FILE: path.join(portDirectory, "truststore.p12"),
     AWS_ENDPOINT_URL: endpointUrl,
     AWS_SHARED_CREDENTIALS_FILE: path.join(portDirectory, "emulator_credentials"),
     AWS_CONFIG_FILE: path.join(portDirectory, "config"),
@@ -121,12 +134,39 @@ export function createChildEnvironment(
   options: ChildEnvironmentOptions = {},
 ): NodeJS.ProcessEnv {
   const { sdks = [], region, platform = process.platform } = options;
-  const caseInsensitiveEnvironment = platform === "win32";
-  const normalizeName = (name: string): string => caseInsensitiveEnvironment ? name.toUpperCase() : name;
   const childEnvironment: NodeJS.ProcessEnv = { ...parentEnvironment };
+  const normalizeName = createEnvironmentNameNormalizer(platform);
+  removeEmulatorOverrides(childEnvironment, emulatorEnvironment, sdks, normalizeName);
+
+  const childRegion = resolveAwsRegion(region, emulatorEnvironment.AWS_REGION);
+  Object.assign(childEnvironment, emulatorEnvironment, {
+    AWS_REGION: childRegion,
+    AWS_DEFAULT_REGION: childRegion,
+  });
+
+  if (sdks.includes("java-v2")) {
+    configureJavaEnvironment(childEnvironment, parentEnvironment, emulatorEnvironment, normalizeName);
+  }
+  if (sdks.includes("rust") || sdks.includes("dotnet")) {
+    childEnvironment.SSL_CERT_FILE = emulatorEnvironment.AWS_CA_BUNDLE;
+  }
+  return childEnvironment;
+}
+
+function createEnvironmentNameNormalizer(platform: NodeJS.Platform): (name: string) => string {
+  return platform === "win32" ? (name) => name.toUpperCase() : (name) => name;
+}
+
+function removeEmulatorOverrides(
+  childEnvironment: NodeJS.ProcessEnv,
+  emulatorEnvironment: EmulatorEnvironment,
+  sdks: readonly EmulatorSdk[],
+  normalizeName: (name: string) => string,
+): void {
   const controlledEnvironmentKeys = new Set([
     ...Object.keys(emulatorEnvironment),
     ...AWS_CREDENTIAL_ENVIRONMENT_KEYS,
+    ...NPM_LAUNCHER_ENVIRONMENT_KEYS,
     ...(sdks.includes("rust") || sdks.includes("dotnet") ? ["SSL_CERT_FILE"] : []),
   ].map(normalizeName));
   for (const key of Object.keys(childEnvironment)) {
@@ -135,67 +175,60 @@ export function createChildEnvironment(
       delete childEnvironment[key];
     }
   }
-  const childRegion = resolveAwsRegion(region, emulatorEnvironment.AWS_REGION);
-  Object.assign(childEnvironment, emulatorEnvironment, {
-    AWS_REGION: childRegion,
-    AWS_DEFAULT_REGION: childRegion,
+}
+
+function configureJavaEnvironment(
+  childEnvironment: NodeJS.ProcessEnv,
+  parentEnvironment: NodeJS.ProcessEnv,
+  emulatorEnvironment: EmulatorEnvironment,
+  normalizeName: (name: string) => string,
+): void {
+  const inheritedJavaOptions: string[] = [];
+  const inheritedJvmWideOptions: string[] = [];
+  for (const name of JAVA_OPTION_ENVIRONMENT_KEYS) {
+    const values = Object.keys(parentEnvironment)
+      .filter((key) => normalizeName(key) === normalizeName(name))
+      .map((key) => parentEnvironment[key])
+      .filter((value): value is string => value !== undefined);
+    for (const key of Object.keys(childEnvironment)) {
+      if (normalizeName(key) === normalizeName(name)) delete childEnvironment[key];
+    }
+    if (values.length === 0) continue;
+    const combinedOptions = values.join(" ");
+    childEnvironment[name] = combinedOptions;
+    inheritedJavaOptions.push(combinedOptions);
+    if ((JVM_WIDE_JAVA_OPTION_ENVIRONMENT_KEYS as readonly string[]).includes(name)) {
+      inheritedJvmWideOptions.push(combinedOptions);
+    }
+  }
+
+  const existingOptions = childEnvironment.JAVA_TOOL_OPTIONS;
+  rejectJavaAwsOverrides(inheritedJavaOptions);
+  const hasConfiguredTrustStore = inheritedJvmWideOptions.some((options) =>
+    /(?:^|[\s"'])-Djavax\.net\.ssl\.trustStore(?:=|\s|["'])/.test(options));
+  const hasConfiguredTrustStoreType = inheritedJvmWideOptions.some((options) =>
+    /(?:^|[\s"'])-Djavax\.net\.ssl\.trustStoreType(?:=|\s|["'])/.test(options));
+  const hasIncompatibleTrustStoreTypeWithoutPath = inheritedJavaOptions.some((options) => {
+    const hasCustomTrustStore = /(?:^|[\s"'])-Djavax\.net\.ssl\.trustStore(?:=|\s|["'])/.test(options);
+    if (hasCustomTrustStore) return false;
+    const types = [...options.matchAll(/(?:^|[\s"'])-Djavax\.net\.ssl\.trustStoreType=(?:"([^"]*)"|'([^']*)'|([^\s"']+))/g)]
+      .map((match) => match[1] ?? match[2] ?? match[3] ?? "");
+    return types.some((type) => type.toUpperCase() !== "PKCS12");
   });
-
-  if (sdks.includes("java-v2")) {
-    const inheritedJavaOptions: string[] = [];
-    const inheritedJvmWideOptions: string[] = [];
-    for (const name of JAVA_OPTION_ENVIRONMENT_KEYS) {
-      const matchingKeys = Object.keys(parentEnvironment)
-        .filter((key) => normalizeName(key) === normalizeName(name));
-      const values = matchingKeys
-        .map((key) => parentEnvironment[key])
-        .filter((value): value is string => value !== undefined);
-      for (const key of Object.keys(childEnvironment)) {
-        if (normalizeName(key) === normalizeName(name)) delete childEnvironment[key];
-      }
-      if (values.length > 0) {
-        const combinedOptions = values.join(" ");
-        childEnvironment[name] = combinedOptions;
-        inheritedJavaOptions.push(combinedOptions);
-        if ((JVM_WIDE_JAVA_OPTION_ENVIRONMENT_KEYS as readonly string[]).includes(name)) {
-          inheritedJvmWideOptions.push(combinedOptions);
-        }
-      }
-    }
-
-    const existingOptions = childEnvironment.JAVA_TOOL_OPTIONS;
-    rejectJavaAwsOverrides(inheritedJavaOptions);
-    const hasConfiguredTrustStore = inheritedJvmWideOptions.some((options) =>
-      /(?:^|[\s"'])-Djavax\.net\.ssl\.trustStore(?:=|\s|["'])/.test(options));
-    const hasConfiguredTrustStoreType = inheritedJvmWideOptions.some((options) =>
-      /(?:^|[\s"'])-Djavax\.net\.ssl\.trustStoreType(?:=|\s|["'])/.test(options));
-    const hasIncompatibleTrustStoreTypeWithoutPath = inheritedJavaOptions.some((options) => {
-      const hasCustomTrustStore = /(?:^|[\s"'])-Djavax\.net\.ssl\.trustStore(?:=|\s|["'])/.test(options);
-      if (hasCustomTrustStore) return false;
-      const types = [...options.matchAll(/(?:^|[\s"'])-Djavax\.net\.ssl\.trustStoreType=(?:"([^"]*)"|'([^']*)'|([^\s"']+))/g)]
-        .map((match) => match[1] ?? match[2] ?? match[3] ?? "");
-      return types.some((type) => type.toUpperCase() !== "PKCS12");
-    });
-    if (hasIncompatibleTrustStoreTypeWithoutPath) {
-      throw new Error("The emulator truststore uses PKCS12. Set javax.net.ssl.trustStoreType=PKCS12 or provide a compatible custom truststore with javax.net.ssl.trustStore.");
-    }
-    if (hasConfiguredTrustStore) {
-      childEnvironment.JAVA_TOOL_OPTIONS = existingOptions;
-    } else {
-      const trustStore = path.join(path.dirname(emulatorEnvironment.AWS_CA_BUNDLE), "truststore.p12");
-      const trustStoreOption = quoteJavaToolOption(`-Djavax.net.ssl.trustStore=${trustStore}`);
-      childEnvironment.JAVA_TOOL_OPTIONS = [
-        existingOptions?.trim(),
-        trustStoreOption,
-        hasConfiguredTrustStoreType ? undefined : "-Djavax.net.ssl.trustStoreType=PKCS12",
-      ].filter(Boolean).join(" ");
-    }
+  if (hasIncompatibleTrustStoreTypeWithoutPath) {
+    throw new Error("The emulator truststore uses PKCS12. Set javax.net.ssl.trustStoreType=PKCS12 or provide a compatible custom truststore with javax.net.ssl.trustStore.");
   }
-
-  if (sdks.includes("rust") || sdks.includes("dotnet")) {
-    childEnvironment.SSL_CERT_FILE = emulatorEnvironment.AWS_CA_BUNDLE;
+  if (hasConfiguredTrustStore) {
+    childEnvironment.JAVA_TOOL_OPTIONS = existingOptions;
+  } else {
+    const trustStore = path.join(path.dirname(emulatorEnvironment.AWS_CA_BUNDLE), "truststore.p12");
+    const trustStoreOption = quoteJavaToolOption(`-Djavax.net.ssl.trustStore=${trustStore}`);
+    childEnvironment.JAVA_TOOL_OPTIONS = [
+      existingOptions?.trim(),
+      trustStoreOption,
+      hasConfiguredTrustStoreType ? undefined : "-Djavax.net.ssl.trustStoreType=PKCS12",
+    ].filter(Boolean).join(" ");
   }
-  return childEnvironment;
 }
 
 function rejectJavaAwsOverrides(options: readonly string[]): void {

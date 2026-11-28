@@ -1,5 +1,142 @@
 # Changelog
 
+## [0.6.14](https://github.com/c19yamamoto/awesome-emulator-cli/compare/v0.6.13...v0.6.14) (2026-11-28)
+
+
+### Maintenance
+
+* **emulator-version:** update AWS Emulator to v1.0.757 ([#96](https://github.com/c19yamamoto/awesome-emulator-cli/issues/96)) ([d93d760](https://github.com/c19yamamoto/awesome-emulator-cli/commit/d93d7609a463f733df13e2a592121fae8382031b))
+
+## [0.6.13](https://github.com/c19yamamoto/awesome-emulator-cli/compare/v0.6.12...v0.6.13) (2026-11-27)
+
+
+### Bug Fixes
+
+* **ci:** restrict emulator auto-merge to trusted PRs ([#94](https://github.com/c19yamamoto/awesome-emulator-cli/issues/94)) ([2547f7f](https://github.com/c19yamamoto/awesome-emulator-cli/commit/2547f7fe7009b75bd5818e8aea9ff571a2fc0954))
+
+## [0.6.12](https://github.com/c19yamamoto/awesome-emulator-cli/compare/v0.6.11...v0.6.12) (2026-11-27)
+
+
+### Maintenance
+
+* **emulator-version:** update AWS Emulator to v1.0.639 ([#92](https://github.com/c19yamamoto/awesome-emulator-cli/issues/92)) ([3b7ae61](https://github.com/c19yamamoto/awesome-emulator-cli/commit/3b7ae613a154e86c9beedbb757239c2363dfe908))
+
+## [0.6.11](https://github.com/c19yamamoto/awesome-emulator-cli/compare/v0.6.10...v0.6.11) (2026-11-27)
+
+
+### Maintenance
+
+* **emulator-version:** update AWS Emulator to v1.0.635 ([#89](https://github.com/c19yamamoto/awesome-emulator-cli/issues/89)) ([5963d08](https://github.com/c19yamamoto/awesome-emulator-cli/commit/5963d085f84813f828a9560f914c0b601c95c83b))
+
+## [0.6.10](https://github.com/c19yamamoto/awesome-emulator-cli/compare/v0.6.9...v0.6.10) (2026-11-26)
+
+
+### Maintenance
+
+* **emulator-version:** update AWS Emulator to v1.0.625 ([#87](https://github.com/c19yamamoto/awesome-emulator-cli/issues/87)) ([572276b](https://github.com/c19yamamoto/awesome-emulator-cli/commit/572276b41c263678ddb00aa06e60547fb9d77e83))
+
+## [0.6.9](https://github.com/c19yamamoto/awesome-emulator-cli/compare/v0.6.8...v0.6.9) (2026-11-25)
+
+
+### Maintenance
+
+* **emulator-version:** update AWS Emulator to v1.0.611 ([#85](https://github.com/c19yamamoto/awesome-emulator-cli/issues/85)) ([fdc19bd](https://github.com/c19yamamoto/awesome-emulator-cli/commit/fdc19bdc8ba408a28806c2fed196625541ce995a))
+
+## [0.6.8](https://github.com/c19yamamoto/awesome-emulator-cli/compare/v0.6.7...v0.6.8) (2026-11-24)
+
+
+### Maintenance
+
+* **emulator-version:** update AWS Emulator to v1.0.598 ([#83](https://github.com/c19yamamoto/awesome-emulator-cli/issues/83)) ([a48aa4d](https://github.com/c19yamamoto/awesome-emulator-cli/commit/a48aa4df2e3c24b73546e95b132a01ef508d8efc))
+
+## [0.6.7](https://github.com/c19yamamoto/awesome-emulator-cli/compare/v0.6.6...v0.6.7) (2026-11-23)
+
+
+### Maintenance
+
+* **emulator-version:** update AWS Emulator to v1.0.583 ([#81](https://github.com/c19yamamoto/awesome-emulator-cli/issues/81)) ([866e1a1](https://github.com/c19yamamoto/awesome-emulator-cli/commit/866e1a1e7bdfaa360129ca4f64e311050a75651c))
+
+## [0.6.6](https://github.com/c19yamamoto/awesome-emulator-cli/compare/v0.6.5...v0.6.6) (2026-11-22)
+
+
+### Maintenance
+
+* **deps:** bump github.com/aws/aws-sdk-go-v2/config from 1.33.19 to 1.33.20 in /examples/sdk-smoke/go in the all-sdk-smoke-gomod group ([#78](https://github.com/c19yamamoto/awesome-emulator-cli/issues/78)) ([b2a5791](https://github.com/c19yamamoto/awesome-emulator-cli/commit/b2a57919fe281d3ae8c1aa8117cc60ed6c428f72))
+* **deps:** bump software.amazon.awssdk:bom from 2.59.2 to 2.59.4 in /examples/sdk-smoke/java in the all-sdk-smoke-maven group ([#76](https://github.com/c19yamamoto/awesome-emulator-cli/issues/76)) ([0c028a6](https://github.com/c19yamamoto/awesome-emulator-cli/commit/0c028a68fc75af41653811e2e5087474cf8ec885))
+* **deps:** the all-sdk-smoke-nuget group with 1 update ([#77](https://github.com/c19yamamoto/awesome-emulator-cli/issues/77)) ([0bc1b14](https://github.com/c19yamamoto/awesome-emulator-cli/commit/0bc1b1483e5eb0c16fae0d71e805a5ba5d2586b8))
+* **emulator-version:** update AWS Emulator to v1.0.567 ([#79](https://github.com/c19yamamoto/awesome-emulator-cli/issues/79)) ([4ba7709](https://github.com/c19yamamoto/awesome-emulator-cli/commit/4ba7709ebf6b5ecdce04477d25007f07d933702b))
+
+## [0.6.5](https://github.com/c19yamamoto/awesome-emulator-cli/compare/v0.6.4...v0.6.5) (2026-11-21)
+
+
+### Maintenance
+
+* **emulator-version:** update AWS Emulator to v1.0.552 ([#74](https://github.com/c19yamamoto/awesome-emulator-cli/issues/74)) ([8871f08](https://github.com/c19yamamoto/awesome-emulator-cli/commit/8871f088520521c21d0331068a1ee2e3434c678d))
+
+## [0.6.4](https://github.com/c19yamamoto/awesome-emulator-cli/compare/v0.6.3...v0.6.4) (2026-11-21)
+
+
+### Maintenance
+
+* **emulator-version:** update AWS Emulator to v1.0.550 ([#72](https://github.com/c19yamamoto/awesome-emulator-cli/issues/72)) ([e5f2f6b](https://github.com/c19yamamoto/awesome-emulator-cli/commit/e5f2f6bf20a08039cd1b85d830bc0322e5f1574f))
+
+## [0.6.3](https://github.com/c19yamamoto/awesome-emulator-cli/compare/v0.6.2...v0.6.3) (2026-11-20)
+
+
+### Maintenance
+
+* **emulator-version:** update AWS Emulator to v1.0.544 ([#68](https://github.com/c19yamamoto/awesome-emulator-cli/issues/68)) ([b63e51b](https://github.com/c19yamamoto/awesome-emulator-cli/commit/b63e51bca3e911555f01a55c842ee0dfc069f92e))
+
+## [0.6.2](https://github.com/c19yamamoto/awesome-emulator-cli/compare/v0.6.1...v0.6.2) (2026-11-20)
+
+
+### Maintenance
+
+* **npm:** add search keywords ([#64](https://github.com/c19yamamoto/awesome-emulator-cli/issues/64)) ([1646cff](https://github.com/c19yamamoto/awesome-emulator-cli/commit/1646cffac6ac7936827bfafe5f8352d760308720))
+
+## [0.6.1](https://github.com/c19yamamoto/awesome-emulator-cli/compare/v0.6.0...v0.6.1) (2026-11-20)
+
+
+### Performance Improvements
+
+* avoid redundant package builds ([#61](https://github.com/c19yamamoto/awesome-emulator-cli/issues/61)) ([b44dd9f](https://github.com/c19yamamoto/awesome-emulator-cli/commit/b44dd9f5fcf19e0fffe80f4d3c70b229ea4c2346))
+
+## [0.6.0](https://github.com/c19yamamoto/awesome-emulator-cli/compare/v0.5.1...v0.6.0) (2026-11-20)
+
+
+### Features
+
+* **cli:** expose emulator credentials and TLS paths ([#57](https://github.com/c19yamamoto/awesome-emulator-cli/issues/57)) ([522f497](https://github.com/c19yamamoto/awesome-emulator-cli/commit/522f497cb63ebe802e280b65a3a7b938eebb6c79))
+* **cli:** support a configurable emulator state directory ([#56](https://github.com/c19yamamoto/awesome-emulator-cli/issues/56)) ([0e71e37](https://github.com/c19yamamoto/awesome-emulator-cli/commit/0e71e37c6027dad8e5acd382718a7eb43060d928))
+
+
+### Bug Fixes
+
+* **cli:** isolate nested npx package resolution ([#60](https://github.com/c19yamamoto/awesome-emulator-cli/issues/60)) ([9acf7cd](https://github.com/c19yamamoto/awesome-emulator-cli/commit/9acf7cda6ec5c22beb2fd5c5a488f243a3e05689))
+
+## [0.5.1](https://github.com/c19yamamoto/awesome-emulator-cli/compare/v0.5.0...v0.5.1) (2026-11-20)
+
+
+### Bug Fixes
+
+* **deps:** secure SDK smoke dependencies ([#48](https://github.com/c19yamamoto/awesome-emulator-cli/issues/48)) ([1f66193](https://github.com/c19yamamoto/awesome-emulator-cli/commit/1f66193ef285a8e74af8958a4e9717d90b1867a8))
+
+
+### Maintenance
+
+* **deps:** bump actions/cache from 4.3.0 to 6.1.0 in the all-github-actions group ([#51](https://github.com/c19yamamoto/awesome-emulator-cli/issues/51)) ([c7e8c59](https://github.com/c19yamamoto/awesome-emulator-cli/commit/c7e8c595259112980506b77b6e4e7882b33f8374))
+* **deps:** bump the all-sdk-smoke-gomod group in /examples/sdk-smoke/go with 2 updates ([#53](https://github.com/c19yamamoto/awesome-emulator-cli/issues/53)) ([56bf750](https://github.com/c19yamamoto/awesome-emulator-cli/commit/56bf75046943a0f4031f38ae3600db900d765496))
+* **deps:** bump the all-sdk-smoke-maven group in /examples/sdk-smoke/java with 2 updates ([#50](https://github.com/c19yamamoto/awesome-emulator-cli/issues/50)) ([c835e25](https://github.com/c19yamamoto/awesome-emulator-cli/commit/c835e25b20b220e545e2b9f116c79c796ca789a8))
+* **deps:** the all-sdk-smoke-nuget group with 1 update ([#52](https://github.com/c19yamamoto/awesome-emulator-cli/issues/52)) ([36fa55f](https://github.com/c19yamamoto/awesome-emulator-cli/commit/36fa55f5fdfc47a78472df01547e5a8ef8f3f0ff))
+
+## [0.5.0](https://github.com/c19yamamoto/awesome-emulator-cli/compare/v0.4.0...v0.5.0) (2026-11-20)
+
+
+### Features
+
+* add emulator initialization hook ([#45](https://github.com/c19yamamoto/awesome-emulator-cli/issues/45)) ([5aa2670](https://github.com/c19yamamoto/awesome-emulator-cli/commit/5aa2670d1a05e723f28463f320b934ae576d7247))
+* add managed emulator sessions ([#44](https://github.com/c19yamamoto/awesome-emulator-cli/issues/44)) ([ceb1373](https://github.com/c19yamamoto/awesome-emulator-cli/commit/ceb137345e946e7e953974aef7ca4efd0cd52066))
+
 ## [0.4.0](https://github.com/c19yamamoto/awesome-emulator-cli/compare/v0.3.0...v0.4.0) (2026-11-20)
 
 

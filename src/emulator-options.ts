@@ -1,7 +1,20 @@
 import type { EmulatorSdk } from "./emulator-environment.js";
+import os from "node:os";
+import path from "node:path";
+
+export type EmulatorCredentialsMode = "files" | "environment";
+
+export function resolveEmulatorCredentialsMode(value: string | undefined): EmulatorCredentialsMode {
+  const mode = value ?? "files";
+  if (mode !== "files" && mode !== "environment") {
+    throw new Error("Credentials mode must be files or environment.");
+  }
+  return mode;
+}
 
 export type StartEmulatorOptions = {
   version?: string;
+  stateDirectory?: string;
   port?: number | string;
   telemetry?: string;
   memory?: string;
@@ -20,6 +33,8 @@ export type RunWithEmulatorOptions = StartEmulatorOptions & {
   region?: string;
   /** Add SDK-specific TLS settings for the selected SDK families. */
   sdks?: EmulatorSdk[];
+  /** Pass Emulator-generated credentials through AWS credential environment variables instead of relying only on files. */
+  credentials?: EmulatorCredentialsMode;
 };
 
 export type PrepareEmulatorOptions = Pick<StartEmulatorOptions, "version" | "signal">;
@@ -32,7 +47,20 @@ export type ResolvedEmulatorOptions = {
   startupTimeoutMs: number;
 };
 
-export const DEFAULT_VERSION = "1.0.533";
+export function resolveEmulatorStateDirectory(
+  value: string | undefined,
+  environment: NodeJS.ProcessEnv = process.env,
+  homeDirectory = os.homedir(),
+  workingDirectory = process.cwd(),
+): string {
+  const configuredDirectory = value ?? environment.AWS_EMULATOR_STATE_DIR;
+  if (configuredDirectory !== undefined && configuredDirectory.trim().length === 0) {
+    throw new Error("Emulator state directory must not be empty.");
+  }
+  return path.resolve(workingDirectory, configuredDirectory ?? path.join(homeDirectory, ".aws", "emulator"));
+}
+
+export const DEFAULT_VERSION = "1.0.757";
 const DEFAULT_PORT = 9297;
 const DEFAULT_MEMORY = "2g";
 

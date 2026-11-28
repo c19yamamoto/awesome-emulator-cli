@@ -9,6 +9,14 @@ import {
 
 const emulator = createEmulatorConnectionSettings(9297, "/Users/test user/.aws/emulator");
 
+test("uses the host port for endpoints and the container port for state-file paths", () => {
+  const connection = createEmulatorConnectionSettings(54321, "/tmp/emulator-state", 51234);
+  assert.equal(connection.endpointUrl, "https://127.0.0.1:54321");
+  assert.equal(connection.healthCheckUrl, "https://127.0.0.1:54321/__admin/health");
+  assert.equal(connection.caFile, path.join("/tmp/emulator-state", "51234", "ca.pem"));
+  assert.equal(connection.credentialsFile, path.join("/tmp/emulator-state", "51234", "emulator_credentials"));
+});
+
 test("overrides AWS settings and removes host credentials and endpoints", () => {
   const child = createChildEnvironment({
     AWS_ACCESS_KEY: "host-key-legacy",
@@ -72,6 +80,28 @@ test("sets both child region variables when an explicit region is provided", () 
   assert.equal(child.AWS_REGION, "ap-northeast-1");
   assert.equal(child.AWS_DEFAULT_REGION, "ap-northeast-1");
   assert.equal(child.AWS_ENDPOINT_URL, emulator.endpointUrl);
+});
+
+test("removes npm exec package selection while preserving user npm registry and proxy settings", () => {
+  const child = createChildEnvironment({
+    npm_config_package: "awesome-emulator-cli",
+    npm_config_registry: "https://registry.example.test/",
+    npm_config_proxy: "http://proxy.example.test:8080",
+  }, emulator.environment);
+
+  assert.equal(child.npm_config_package, undefined);
+  assert.equal(child.npm_config_registry, "https://registry.example.test/");
+  assert.equal(child.npm_config_proxy, "http://proxy.example.test:8080");
+});
+
+test("filters npm exec package selection case-insensitively on Windows", () => {
+  const child = createChildEnvironment({
+    NPM_CONFIG_PACKAGE: "awesome-emulator-cli",
+    NPM_CONFIG_REGISTRY: "https://registry.example.test/",
+  }, emulator.environment, { platform: "win32" });
+
+  assert.equal(child.NPM_CONFIG_PACKAGE, undefined);
+  assert.equal(child.NPM_CONFIG_REGISTRY, "https://registry.example.test/");
 });
 
 test("rejects an empty child region", () => {

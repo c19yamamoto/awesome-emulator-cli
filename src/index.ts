@@ -1,31 +1,36 @@
 import { randomBytes } from "node:crypto";
 import { mkdir, readFile } from "node:fs/promises";
 import https from "node:https";
-import net from "node:net";
-import os from "node:os";
 import path from "node:path";
 import { createRetryableStop, startContainer, stopContainer, withEmulator } from "./container-lifecycle.js";
-import { docker, throwIfAborted } from "./docker.js";
+import { formatPortBinding, getPublishedPort, reserveContainerPort } from "./container-ports.js";
+import { docker, isMissingDockerResource, throwIfAborted } from "./docker.js";
 import {
   createChildEnvironment,
   createEmulatorConnectionSettings,
   normalizeEmulatorSdks,
   resolveAwsRegion,
+  type ChildEnvironmentOptions,
   type EmulatorEnvironment,
   type EmulatorSdk,
 } from "./emulator-environment.js";
+import { readEmulatorCredentialEnvironment } from "./emulator-credentials.js";
 import { ensureEmulatorImage, getArchitecture, type EmulatorArchitecture } from "./emulator-image.js";
 import { isSessionOwnerRunning, readSession, removeSession, reserveSession, validateSessionName, writeRunningSession, type RunningSessionRecord } from "./session-store.js";
 import {
   resolveEmulatorOptions,
+  resolveEmulatorStateDirectory,
+  resolveEmulatorCredentialsMode,
   resolveEmulatorVersion,
   type PrepareEmulatorOptions,
+  type EmulatorCredentialsMode,
   type RunWithEmulatorOptions,
   type StartEmulatorOptions,
 } from "./emulator-options.js";
 import { runCommand } from "./process.js";
 
 export type { PrepareEmulatorOptions, RunWithEmulatorOptions, StartEmulatorOptions } from "./emulator-options.js";
+export type { EmulatorCredentialsMode } from "./emulator-options.js";
 export type { EmulatorEnvironment, EmulatorSdk } from "./emulator-environment.js";
 
 export type EmulatorSession = {
@@ -41,42 +46,44 @@ export type EmulatorSession = {
   stop: () => Promise<void>;
 };
 
+type StartedEmulatorSession = EmulatorSession & { containerPort: number };
+
 export type PersistentEmulatorSession = Omit<EmulatorSession, "containerId" | "stop"> & { name: string };
-export type EmulatorSessionExecOptions = Pick<RunWithEmulatorOptions, "shell" | "sdks" | "region" | "signal">;
+export type EmulatorSessionExecOptions = Pick<RunWithEmulatorOptions, "shell" | "sdks" | "region" | "signal" | "stateDirectory" | "credentials">;
 export type EmulatorSessionInitCommand = {
   command: string;
   args?: string[];
   shell?: boolean;
   sdks?: EmulatorSdk[];
   region?: string;
+  credentials?: EmulatorCredentialsMode;
 };
 export type UpEmulatorSessionOptions = StartEmulatorOptions & { init?: EmulatorSessionInitCommand };
 
+async function createCommandEnvironment(
+  parentEnvironment: NodeJS.ProcessEnv,
+  emulatorEnvironment: EmulatorEnvironment,
+  options: ChildEnvironmentOptions & { credentials?: EmulatorCredentialsMode } = {},
+): Promise<NodeJS.ProcessEnv> {
+  const { credentials, ...environmentOptions } = options;
+  const credentialsMode = resolveEmulatorCredentialsMode(credentials);
+  const childEnvironment = createChildEnvironment(parentEnvironment, emulatorEnvironment, environmentOptions);
+  if (credentialsMode === "environment") {
+    Object.assign(childEnvironment, await readEmulatorCredentialEnvironment(emulatorEnvironment.AWS_SHARED_CREDENTIALS_FILE));
+  }
+  return childEnvironment;
+}
+
 const MANAGED_CONTAINER_LABEL = "io.github.c19yamamoto.awesome-emulator-cli.managed";
 const SESSION_CONTAINER_LABEL = "io.github.c19yamamoto.awesome-emulator-cli.session";
-
-function emulatorStateDirectory(): string {
-  return path.join(os.homedir(), ".aws", "emulator");
-}
+const HEALTH_CHECK_INTERVAL_MS = 250;
+const CONTAINER_STATUS_CHECK_INTERVAL_MS = 1000;
 
 /** Build or reuse the selected AWS Emulator Docker image without starting a container. */
 export async function prepareEmulatorImage(options: PrepareEmulatorOptions = {}): Promise<string> {
   throwIfAborted(options.signal);
   const version = resolveEmulatorVersion(options.version);
   return ensureEmulatorImage(version, getArchitecture(), options.signal);
-}
-
-async function getAvailablePort(): Promise<number> {
-  const server = net.createServer();
-  await new Promise<void>((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", resolve);
-  });
-  const address = server.address();
-  if (!address || typeof address === "string") throw new Error("Could not determine an available local port.");
-  const { port } = address;
-  await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
-  return port;
 }
 
 function requestHealth(port: number, ca: Buffer, signal?: AbortSignal): Promise<boolean> {
@@ -107,7 +114,8 @@ type ContainerRunConfiguration = {
   image: string;
   labels: Record<string, string>;
   memory: string;
-  port: number;
+  requestedPort: number;
+  containerPort: number;
   stateDirectory: string;
   telemetry: "on" | "off";
 };
@@ -118,7 +126,8 @@ function createContainerRunArguments({
   image,
   labels,
   memory,
-  port,
+  requestedPort,
+  containerPort,
   stateDirectory,
   telemetry,
 }: ContainerRunConfiguration): string[] {
@@ -136,40 +145,57 @@ function createContainerRunArguments({
     ...dockerLabels,
     "--memory", memory,
     "--memory-swap", memory,
-    "--publish", `127.0.0.1:${port}:${port}`,
+    "--publish", formatPortBinding(requestedPort, containerPort),
     "--mount", `type=bind,source=${stateDirectory},target=/home/emulator/.aws/emulator`,
     "--env", "HOME=/home/emulator",
     "--name", containerName,
     image,
-    "-p", String(port),
+    "-p", String(containerPort),
     "-t", telemetry,
   ];
 }
 
-async function waitUntilHealthy(containerId: string, port: number, stateDirectory: string, timeoutMs: number, signal?: AbortSignal): Promise<void> {
+async function isContainerRunning(containerId: string, signal?: AbortSignal): Promise<boolean> {
+  try {
+    const running = await docker(["inspect", "--format", "{{.State.Running}}", containerId], { capture: true, signal });
+    return running === "true";
+  } catch (error) {
+    if (isMissingDockerResource(error, "container")) return false;
+    throw error;
+  }
+}
+
+async function waitUntilHealthy(
+  containerId: string,
+  hostPort: number,
+  containerPort: number,
+  stateDirectory: string,
+  timeoutMs: number,
+  signal?: AbortSignal,
+): Promise<void> {
   const deadline = Date.now() + timeoutMs;
-  const caFile = path.join(stateDirectory, String(port), "ca.pem");
+  const caFile = path.join(stateDirectory, String(containerPort), "ca.pem");
+  let nextContainerCheck = 0;
   while (Date.now() < deadline) {
     throwIfAborted(signal);
     try {
       const ca = await readFile(caFile);
-      if (await requestHealth(port, ca, signal)) return;
-    } catch {
+      if (await requestHealth(hostPort, ca, signal)) return;
+    } catch (error) {
+      if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
       // The container creates its certificate before the health route is ready.
     }
     throwIfAborted(signal);
 
-    try {
-      const running = await docker(["inspect", "--format", "{{.State.Running}}", containerId], { capture: true, signal });
-      if (running !== "true") {
+    if (Date.now() >= nextContainerCheck) {
+      const running = await isContainerRunning(containerId, signal);
+      if (!running) {
         const logs = await docker(["logs", "--tail", "100", containerId], { capture: true }).catch(() => "");
         throw new Error(`AWS Emulator container exited before becoming healthy.${logs ? `\n${logs}` : ""}`);
       }
-    } catch (error: unknown) {
-      throwIfAborted(signal);
-      if (error instanceof Error && error.message.startsWith("AWS Emulator container exited")) throw error;
+      nextContainerCheck = Date.now() + CONTAINER_STATUS_CHECK_INTERVAL_MS;
     }
-    await delay(250);
+    await delay(Math.min(HEALTH_CHECK_INTERVAL_MS, Math.max(0, deadline - Date.now())));
   }
   throwIfAborted(signal);
   const logs = await docker(["logs", "--tail", "100", containerId], { capture: true }).catch(() => "");
@@ -180,35 +206,39 @@ async function waitUntilHealthy(containerId: string, port: number, stateDirector
  * Start AWS Emulator in a local Docker container.
  *
  * The returned object includes SDK environment variables and an idempotent
- * stop() function. Port 0 asks the wrapper to choose an available local port.
+ * stop() function. Port 0 asks Docker to choose an available host port.
  */
 async function startEmulatorWithIdentity(
   options: StartEmulatorOptions,
   containerName: string,
   labels: Record<string, string>,
-): Promise<EmulatorSession> {
+  stateDirectory = resolveEmulatorStateDirectory(options.stateDirectory),
+): Promise<StartedEmulatorSession> {
   throwIfAborted(options.signal);
   const { version, requestedPort, telemetry, memory, startupTimeoutMs } = resolveEmulatorOptions(options);
-  const port = requestedPort === 0 ? await getAvailablePort() : requestedPort;
+  let port = requestedPort;
   throwIfAborted(options.signal);
   const architecture = getArchitecture();
-  const stateDirectory = emulatorStateDirectory();
   await mkdir(stateDirectory, { recursive: true, mode: 0o700 });
 
   const image = await ensureEmulatorImage(version, architecture, options.signal);
   throwIfAborted(options.signal);
+  const containerPort = requestedPort === 0 ? await reserveContainerPort(stateDirectory) : requestedPort;
   const runArguments = createContainerRunArguments({
     architecture,
     containerName,
     image,
     labels,
     memory,
-    port,
+    requestedPort,
+    containerPort,
     stateDirectory,
     telemetry,
   });
-  const runningContainerId = await startContainer(containerName, runArguments, options.signal, (id, signal) =>
-    waitUntilHealthy(id, port, stateDirectory, startupTimeoutMs, signal));
+  const runningContainerId = await startContainer(containerName, runArguments, options.signal, async (id, signal) => {
+    if (requestedPort === 0) port = await getPublishedPort(id, containerPort, signal);
+    await waitUntilHealthy(id, port, containerPort, stateDirectory, startupTimeoutMs, signal);
+  });
   const stop = createRetryableStop(() => stopContainer(runningContainerId));
   try {
     throwIfAborted(options.signal);
@@ -223,11 +253,12 @@ async function startEmulatorWithIdentity(
     }
     throw startupError;
   }
-  const connectionSettings = createEmulatorConnectionSettings(port, stateDirectory);
+  const connectionSettings = createEmulatorConnectionSettings(port, stateDirectory, containerPort);
 
   return {
     version,
     port,
+    containerPort,
     ...connectionSettings,
     containerId: runningContainerId,
     stop,
@@ -236,7 +267,8 @@ async function startEmulatorWithIdentity(
 
 export async function startEmulator(options: StartEmulatorOptions = {}): Promise<EmulatorSession> {
   const containerName = `awesome-emulator-cli-${process.pid}-${randomBytes(4).toString("hex")}`;
-  return startEmulatorWithIdentity(options, containerName, { [MANAGED_CONTAINER_LABEL]: "true" });
+  const { containerPort: _containerPort, ...session } = await startEmulatorWithIdentity(options, containerName, { [MANAGED_CONTAINER_LABEL]: "true" });
+  return session;
 }
 
 export async function upEmulatorSession(
@@ -246,21 +278,25 @@ export async function upEmulatorSession(
   validateSessionName(name);
   const { init, ...emulatorOptions } = options;
   const initOptions = init
-    ? { sdks: normalizeEmulatorSdks(init.sdks), region: resolveAwsRegion(init.region) }
+    ? {
+      sdks: normalizeEmulatorSdks(init.sdks),
+      region: resolveAwsRegion(init.region),
+      credentials: resolveEmulatorCredentialsMode(init.credentials),
+    }
     : undefined;
   if (init && !init.command) throw new Error("An initialization command is required.");
-  const stateDirectory = emulatorStateDirectory();
+  const stateDirectory = resolveEmulatorStateDirectory(emulatorOptions.stateDirectory);
   const containerName = `awesome-emulator-cli-session-${randomBytes(4).toString("hex")}-${name}`;
   await reserveSession(stateDirectory, name, containerName);
 
-  let emulator: EmulatorSession | undefined;
+  let emulator: StartedEmulatorSession | undefined;
   try {
     emulator = await startEmulatorWithIdentity(emulatorOptions, containerName, {
       [MANAGED_CONTAINER_LABEL]: "true",
       [SESSION_CONTAINER_LABEL]: name,
-    });
+    }, stateDirectory);
     if (init && initOptions) {
-      const childEnvironment = createChildEnvironment(process.env, emulator.environment, initOptions);
+      const childEnvironment = await createCommandEnvironment(process.env, emulator.environment, initOptions);
       const exitCode = await runCommand(init.command, init.args ?? [], childEnvironment, options.signal, init.shell ?? false, "stderr");
       if (exitCode !== 0) {
         throwIfAborted(options.signal);
@@ -268,17 +304,18 @@ export async function upEmulatorSession(
       }
     }
     const record: RunningSessionRecord = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       name,
       state: "running",
       containerName,
       containerId: emulator.containerId,
       version: emulator.version,
       port: emulator.port,
+      containerPort: emulator.containerPort,
     };
     await writeRunningSession(stateDirectory, record);
     throwIfAborted(options.signal);
-    const { containerId: _containerId, stop: _stop, ...publicSession } = emulator;
+    const { containerId: _containerId, containerPort: _containerPort, stop: _stop, ...publicSession } = emulator;
     return { name, ...publicSession };
   } catch (error) {
     const cleanupErrors: unknown[] = [];
@@ -315,7 +352,7 @@ async function inspectSessionContainer(name: string, containerName: string): Pro
       containerName,
     ], { capture: true });
   } catch (error) {
-    if (error instanceof Error && /no such (?:container|object)/i.test(error.message)) return undefined;
+    if (isMissingDockerResource(error, "container")) return undefined;
     throw error;
   }
 
@@ -337,10 +374,11 @@ export async function execEmulatorSession(
 ): Promise<number> {
   if (!command) throw new Error("A command is required.");
   validateSessionName(name);
-  const { signal, shell = false, sdks: requestedSdks = [], region } = options;
+  const { signal, shell = false, sdks: requestedSdks = [], region, stateDirectory: requestedStateDirectory } = options;
+  const credentials = resolveEmulatorCredentialsMode(options.credentials);
   const childRegion = resolveAwsRegion(region);
   const sdks = normalizeEmulatorSdks(requestedSdks);
-  const stateDirectory = emulatorStateDirectory();
+  const stateDirectory = resolveEmulatorStateDirectory(requestedStateDirectory);
   const session = await readSession(stateDirectory, name);
   if (session.state !== "running") {
     throw new Error(`Emulator session "${name}" is still starting. Wait for "awesome-emulator up" to finish before running commands.`);
@@ -356,14 +394,21 @@ export async function execEmulatorSession(
     throw new Error(`Emulator session "${name}" is not running. Run "awesome-emulator down --session ${name}" to remove it.`);
   }
 
-  const emulator = createEmulatorConnectionSettings(session.port, stateDirectory);
-  const childEnvironment = createChildEnvironment(process.env, emulator.environment, { sdks, region: childRegion });
+  const emulator = createEmulatorConnectionSettings(session.port, stateDirectory, session.schemaVersion === 2 ? session.containerPort : session.port);
+  const childEnvironment = await createCommandEnvironment(process.env, emulator.environment, {
+    sdks,
+    region: childRegion,
+    credentials,
+  });
   return runCommand(command, args, childEnvironment, signal, shell);
 }
 
-export async function downEmulatorSession(name: string): Promise<void> {
+export async function downEmulatorSession(
+  name: string,
+  options: Pick<StartEmulatorOptions, "stateDirectory"> = {},
+): Promise<void> {
   validateSessionName(name);
-  const stateDirectory = emulatorStateDirectory();
+  const stateDirectory = resolveEmulatorStateDirectory(options.stateDirectory);
   const session = await readSession(stateDirectory, name);
   if (session.state === "starting" && isSessionOwnerRunning(session)) {
     throw new Error(`Emulator session "${name}" is still starting. Retry after "awesome-emulator up" finishes.`);
@@ -380,10 +425,15 @@ export async function downEmulatorSession(name: string): Promise<void> {
 export async function runWithEmulator(command: string, args: string[] = [], options: RunWithEmulatorOptions = {}): Promise<number> {
   if (!command) throw new Error("A command is required.");
   const { shell = false, sdks: requestedSdks = [], region, ...emulatorOptions } = options;
+  const credentials = resolveEmulatorCredentialsMode(options.credentials);
   const childRegion = resolveAwsRegion(region);
   const sdks = normalizeEmulatorSdks(requestedSdks);
   return withEmulator(() => startEmulator(emulatorOptions), async (emulator) => {
-    const childEnvironment = createChildEnvironment(process.env, emulator.environment, { sdks, region: childRegion });
+    const childEnvironment = await createCommandEnvironment(process.env, emulator.environment, {
+      sdks,
+      region: childRegion,
+      credentials,
+    });
     return runCommand(command, args, childEnvironment, emulatorOptions.signal, shell);
   });
 }

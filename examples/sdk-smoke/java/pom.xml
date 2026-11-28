@@ -8,7 +8,7 @@
   <properties>
     <maven.compiler.release>17</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <aws.sdk.version>2.57.4</aws.sdk.version>
+    <aws.sdk.version>2.59.4</aws.sdk.version>
   </properties>
   <dependencyManagement>
     <dependencies>
@@ -32,7 +32,7 @@
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-compiler-plugin</artifactId>
-        <version>3.14.1</version>
+        <version>3.16.0</version>
       </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
