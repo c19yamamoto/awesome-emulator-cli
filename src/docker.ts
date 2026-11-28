@@ -7,6 +7,28 @@ export type DockerOptions = {
 
 export type DockerRunner = (args: string[], options?: DockerOptions) => Promise<string>;
 
+export class DockerCommandError extends Error {
+  constructor(
+    readonly args: readonly string[],
+    readonly exitCode: number | null,
+    readonly signal: NodeJS.Signals | null,
+    readonly stdout: string,
+    readonly stderr: string,
+  ) {
+    const detail = (stderr || stdout).trim();
+    super(`docker ${args[0]} failed${signal ? ` (${signal})` : ` with exit code ${exitCode}`}${detail ? `:\n${detail}` : "."}`);
+    this.name = "DockerCommandError";
+  }
+}
+
+export function isMissingDockerResource(error: unknown, resource: "container" | "image"): boolean {
+  const output = error instanceof DockerCommandError
+    ? `${error.stderr}\n${error.stdout}`
+    : error instanceof Error ? error.message : "";
+  const pattern = resource === "container" ? /no such (?:container|object)/i : /no such (?:image|object)/i;
+  return pattern.test(output);
+}
+
 export function throwIfAborted(signal?: AbortSignal): void {
   if (!signal?.aborted) return;
   if (signal.reason instanceof Error) throw signal.reason;
@@ -54,7 +76,6 @@ export const docker: DockerRunner = (args, { capture = false, signal } = {}) => 
       resolve(stdout.trim());
       return;
     }
-    const detail = (stderr || stdout).trim();
-    fail(new Error(`docker ${args[0]} failed${signalName ? ` (${signalName})` : ` with exit code ${code}`}${detail ? `:\n${detail}` : "."}`));
+    fail(new DockerCommandError(args, code, signalName, stdout, stderr));
   });
 });

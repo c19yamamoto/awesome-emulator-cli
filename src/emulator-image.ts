@@ -2,14 +2,14 @@ import { createHash } from "node:crypto";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { docker, throwIfAborted } from "./docker.js";
+import { docker, isMissingDockerResource, throwIfAborted } from "./docker.js";
 
 export type EmulatorArchitecture = { docker: "amd64" | "arm64"; rpm: "x86_64" | "aarch64" };
 
 const PACKAGE_ROOT = "https://downloads.aws.com/aws-emulator/packages/aws-emulator/LTS";
 const PACKAGE_SIGNING_KEY = "https://downloads.aws.com/keys/gpg/current.asc";
 const PACKAGE_SIGNING_FINGERPRINT = "98BCF336A3BE53B734E967C52E5BF49BD940F624";
-const CONTAINER_PORT = 9297;
+export const EMULATOR_CONTAINER_PORT = 9297;
 
 export function getArchitecture(): EmulatorArchitecture {
   if (process.arch === "x64") return { docker: "amd64", rpm: "x86_64" };
@@ -42,7 +42,7 @@ RUN set -eu; \\
     dnf clean all
 USER 1000:1000
 ENV HOME=/home/emulator
-EXPOSE ${CONTAINER_PORT}
+EXPOSE ${EMULATOR_CONTAINER_PORT}
 ENTRYPOINT ["aws-emulator", "-b", "0.0.0.0"]
 `;
 }
@@ -76,8 +76,9 @@ export async function ensureEmulatorImage(
     await docker(["image", "inspect", image], { capture: true, signal });
     throwIfAborted(signal);
     return image;
-  } catch {
+  } catch (error) {
     throwIfAborted(signal);
+    if (!isMissingDockerResource(error, "image")) throw error;
     // Build the official Linux package into a local image on first use.
   }
 
