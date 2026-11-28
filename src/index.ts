@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomInt } from "node:crypto";
 import { mkdir, readFile } from "node:fs/promises";
 import https from "node:https";
 import path from "node:path";
@@ -109,9 +109,8 @@ const delay = (milliseconds: number): Promise<void> => new Promise((resolve) => 
 
 async function reserveContainerPort(stateDirectory: string): Promise<number> {
   const firstEphemeralPort = 49_152;
-  const ephemeralPortCount = 65_536 - firstEphemeralPort;
   for (let attempt = 0; attempt < 128; attempt += 1) {
-    const port = firstEphemeralPort + (randomBytes(2).readUInt16BE(0) % ephemeralPortCount);
+    const port = randomInt(firstEphemeralPort, 65_536);
     try {
       await mkdir(path.join(stateDirectory, String(port)), { mode: 0o700 });
       return port;
