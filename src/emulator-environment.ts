@@ -1,5 +1,12 @@
 import path from "node:path";
 
+export const EMULATOR_STATE_FILES = {
+  caCertificate: "ca.pem",
+  trustStore: "truststore.p12",
+  credentials: "emulator_credentials",
+  config: "config",
+} as const;
+
 export type EmulatorEnvironment = {
   AWS_EMULATOR_STATE_DIR: string;
   AWS_EMULATOR_CA_FILE: string;
@@ -62,10 +69,14 @@ const AWS_CREDENTIAL_ENVIRONMENT_KEYS = [
   "AWS_ENDPOINT_URL_SUFFIX",
 ] as const;
 
-const JAVA_OPTION_ENVIRONMENT_KEYS = [
+const JVM_WIDE_JAVA_OPTION_ENVIRONMENT_KEYS = [
   "JAVA_TOOL_OPTIONS",
   "JDK_JAVA_OPTIONS",
   "_JAVA_OPTIONS",
+] as const;
+
+const JAVA_OPTION_ENVIRONMENT_KEYS = [
+  ...JVM_WIDE_JAVA_OPTION_ENVIRONMENT_KEYS,
   "JAVA_OPTS",
   "MAVEN_OPTS",
   "GRADLE_OPTS",
@@ -75,12 +86,6 @@ const JAVA_OPTION_ENVIRONMENT_KEYS = [
 
 // npm exec --package exports its selector to children; nested npx must use its own requested package.
 const NPM_LAUNCHER_ENVIRONMENT_KEYS = ["npm_config_package"] as const;
-
-const JVM_WIDE_JAVA_OPTION_ENVIRONMENT_KEYS = [
-  "JAVA_TOOL_OPTIONS",
-  "JDK_JAVA_OPTIONS",
-  "_JAVA_OPTIONS",
-] as const;
 
 export function normalizeEmulatorSdks(sdks: readonly string[] = []): EmulatorSdk[] {
   const unsupportedSdk = sdks.find((sdk) => !SUPPORTED_EMULATOR_SDKS.includes(sdk as EmulatorSdk));
@@ -103,18 +108,20 @@ export function createEmulatorConnectionSettings(
 ): EmulatorConnectionSettings {
   const endpointUrl = `https://127.0.0.1:${hostPort}`;
   const portDirectory = path.join(stateDirectory, String(containerPort));
+  const caFile = path.join(portDirectory, EMULATOR_STATE_FILES.caCertificate);
+  const trustStoreFile = path.join(portDirectory, EMULATOR_STATE_FILES.trustStore);
   const environment: EmulatorEnvironment = {
     AWS_EMULATOR_STATE_DIR: stateDirectory,
-    AWS_EMULATOR_CA_FILE: path.join(portDirectory, "ca.pem"),
-    AWS_EMULATOR_TRUSTSTORE_FILE: path.join(portDirectory, "truststore.p12"),
+    AWS_EMULATOR_CA_FILE: caFile,
+    AWS_EMULATOR_TRUSTSTORE_FILE: trustStoreFile,
     AWS_ENDPOINT_URL: endpointUrl,
-    AWS_SHARED_CREDENTIALS_FILE: path.join(portDirectory, "emulator_credentials"),
-    AWS_CONFIG_FILE: path.join(portDirectory, "config"),
-    AWS_CA_BUNDLE: path.join(portDirectory, "ca.pem"),
+    AWS_SHARED_CREDENTIALS_FILE: path.join(portDirectory, EMULATOR_STATE_FILES.credentials),
+    AWS_CONFIG_FILE: path.join(portDirectory, EMULATOR_STATE_FILES.config),
+    AWS_CA_BUNDLE: caFile,
     AWS_EC2_METADATA_DISABLED: "true",
     AWS_REGION: DEFAULT_AWS_REGION,
     AWS_DEFAULT_REGION: DEFAULT_AWS_REGION,
-    NODE_EXTRA_CA_CERTS: path.join(portDirectory, "ca.pem"),
+    NODE_EXTRA_CA_CERTS: caFile,
     AWS_DISABLE_HOST_PREFIX_INJECTION: "true",
   };
 
@@ -221,7 +228,7 @@ function configureJavaEnvironment(
   if (hasConfiguredTrustStore) {
     childEnvironment.JAVA_TOOL_OPTIONS = existingOptions;
   } else {
-    const trustStore = path.join(path.dirname(emulatorEnvironment.AWS_CA_BUNDLE), "truststore.p12");
+    const trustStore = emulatorEnvironment.AWS_EMULATOR_TRUSTSTORE_FILE;
     const trustStoreOption = quoteJavaToolOption(`-Djavax.net.ssl.trustStore=${trustStore}`);
     childEnvironment.JAVA_TOOL_OPTIONS = [
       existingOptions?.trim(),

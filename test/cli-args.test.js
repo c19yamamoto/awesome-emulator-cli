@@ -36,6 +36,8 @@ test("accepts initialization options only with up --init", () => {
 
 test("rejects unsupported and command-ineligible options", () => {
   assert.throws(() => parseCliArgs(["run", "--sdk", "unknown"]), /Unsupported SDK: unknown/);
+  assert.throws(() => parseCliArgs(["run", "--credentials", "invalid"]), /files or env/);
+  assert.throws(() => parseCliArgs(["run", "--credentials", "constructor"]), /files or env/);
   assert.throws(() => parseCliArgs(["start", "--sdk", "java-v2"]), /--sdk can only be used/);
   assert.throws(() => parseCliArgs(["exec", "--region", "us-west-2"]), /--session is required/);
 });
