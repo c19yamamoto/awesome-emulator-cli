@@ -44,7 +44,7 @@ test("updates the existing bot coverage comment instead of creating a duplicate"
   });
 
   assert.equal(requests.length, 2);
-  assert.match(requests[1].url, /\/issues\/105\/comments\/42$/);
+  assert.match(requests[1].url, /\/issues\/comments\/42$/);
   assert.equal(requests[1].options.method, "PATCH");
   assert.match(JSON.parse(requests[1].options.body).body, /C0: 98%/);
 });

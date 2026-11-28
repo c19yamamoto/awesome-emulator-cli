@@ -95,7 +95,7 @@ export async function publishCoverageComment(options: PublisherOptions): Promise
   }
 
   const response = existing
-    ? await fetcher(`${commentsEndpoint}/${existing.id}`, {
+    ? await fetcher(`${apiBase}/issues/comments/${existing.id}`, {
       method: "PATCH",
       headers,
       body: JSON.stringify({ body }),
