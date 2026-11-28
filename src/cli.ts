@@ -8,33 +8,19 @@ import {
   startEmulator,
   upEmulatorSession,
 } from "./index.js";
-import { parseCliArgs } from "./cli-args.js";
-import { DEFAULT_VERSION } from "./emulator-options.js";
+import { formatCliOptionHelp, parseCliArgs } from "./cli-args.js";
 import { FORWARDED_SIGNALS, getSignalExitCode, type ForwardedSignal } from "./signals.js";
-import { DEFAULT_AWS_REGION, SUPPORTED_EMULATOR_SDKS } from "./emulator-environment.js";
 
 function usage() {
   console.log(`Usage:
-  awesome-emulator prepare [--version <version>]
-  awesome-emulator start [options] [--state-dir <path>]
-  awesome-emulator run [options] [--state-dir <path>] [--region <region>] [--sdk <family>]... [--credentials <files|env>] [--shell] -- <command> [args...]
-  awesome-emulator up --session <name> [options] [--state-dir <path>] [--init [child options] -- <command> [args...]]
-  awesome-emulator exec --session <name> [--state-dir <path>] [--region <region>] [--sdk <family>]... [--credentials <files|env>] [--shell] -- <command> [args...]
-  awesome-emulator down --session <name> [--state-dir <path>]
+  awesome-emulator prepare [options]
+  awesome-emulator start [options]
+  awesome-emulator run [options] -- <command> [args...]
+  awesome-emulator up --session <name> [options] [--init -- <command> [args...]]
+  awesome-emulator exec --session <name> [options] -- <command> [args...]
+  awesome-emulator down --session <name> [options]
 
-Options:
-  -v, --version <version>     AWS Emulator version (default: ${DEFAULT_VERSION})
-  -p, --port <port>           (start/run/up) Host port; 0 lets Docker choose one (default: 9297)
-  -t, --telemetry <on|off>    (start/run/up) Telemetry setting (default: on)
-      --memory <limit>        (start/run/up) Container memory limit (default: 2g)
-      --state-dir <path>      (start/run/up/exec/down) Emulator state directory (default: AWS_EMULATOR_STATE_DIR or ~/.aws/emulator)
-      --region <region>       (run/exec/up --init) Default region for the child command (default: ${DEFAULT_AWS_REGION})
-      --session <name>        (up/exec/down) Persistent emulator session name
-      --sdk <family>          (run/exec/up --init) Add SDK-specific TLS settings; repeatable
-                              (${SUPPORTED_EMULATOR_SDKS.join(", ")})
-      --credentials <mode>    (run/exec/up --init) Credentials delivery: files (default) or env
-      --shell                 (run/exec/up --init) Enable .cmd/.bat and built-ins; trusted values only
-      --init                  (up only) Run a command after the emulator becomes healthy
+Options:\n${formatCliOptionHelp().join("\n")}
   -h, --help                  Show this help`);
 }
 

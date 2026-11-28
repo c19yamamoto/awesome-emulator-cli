@@ -8,6 +8,7 @@ import { docker, isMissingDockerResource, throwIfAborted } from "./docker.js";
 import {
   createChildEnvironment,
   createEmulatorConnectionSettings,
+  EMULATOR_STATE_FILES,
   normalizeEmulatorSdks,
   resolveAwsRegion,
   type ChildEnvironmentOptions,
@@ -174,7 +175,7 @@ async function waitUntilHealthy(
   signal?: AbortSignal,
 ): Promise<void> {
   const deadline = Date.now() + timeoutMs;
-  const caFile = path.join(stateDirectory, String(containerPort), "ca.pem");
+  const caFile = path.join(stateDirectory, String(containerPort), EMULATOR_STATE_FILES.caCertificate);
   let nextContainerCheck = 0;
   while (Date.now() < deadline) {
     throwIfAborted(signal);

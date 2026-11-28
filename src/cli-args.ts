@@ -1,72 +1,194 @@
-import type { EmulatorCredentialsMode, RunWithEmulatorOptions, StartEmulatorOptions } from "./emulator-options.js";
-import { SUPPORTED_EMULATOR_SDKS, type EmulatorSdk } from "./emulator-environment.js";
+import type { EmulatorCredentialsMode, RunWithEmulatorOptions } from "./emulator-options.js";
+import { DEFAULT_AWS_REGION, SUPPORTED_EMULATOR_SDKS, type EmulatorSdk } from "./emulator-environment.js";
+import {
+  DEFAULT_EMULATOR_CREDENTIALS_MODE,
+  DEFAULT_EMULATOR_MEMORY,
+  DEFAULT_EMULATOR_PORT,
+  DEFAULT_EMULATOR_STATE_DIRECTORY_PARTS,
+  DEFAULT_EMULATOR_TELEMETRY,
+  DEFAULT_VERSION,
+} from "./emulator-options.js";
 
-export type CliValueOption = "version" | "port" | "telemetry" | "memory" | "region" | "session" | "stateDirectory" | "credentials";
-export type CliOptions = Pick<StartEmulatorOptions, "version" | "port" | "telemetry" | "memory" | "stateDirectory">
-  & Pick<RunWithEmulatorOptions, "region" | "sdks">
-  & { shell?: boolean; session?: string; init?: boolean; credentials?: EmulatorCredentialsMode };
+type CliOptionSource = RunWithEmulatorOptions & { session?: string; init?: boolean };
+type CliCommand = "prepare" | "start" | "run" | "up" | "exec" | "down";
+type CliOptionKey = keyof CliOptionSource;
+
+type CliOptionDefinition = {
+  [Key in CliOptionKey]: {
+    key: Key;
+    kind: Key extends "sdks" ? "sdk" : Key extends "shell" | "init" ? "flag" : "value";
+    names: readonly string[];
+    commands: readonly CliCommand[];
+    upRequiresInit?: boolean;
+    valueLabel: string;
+    description: string;
+  }
+}[CliOptionKey];
+
+const CLI_CREDENTIAL_MODE_NAMES = {
+  files: "files",
+  env: "environment",
+} as const satisfies Record<string, EmulatorCredentialsMode>;
+
+function getCredentialModeHelp(): string {
+  const modes = Object.entries(CLI_CREDENTIAL_MODE_NAMES).map(([name, mode]) =>
+    mode === DEFAULT_EMULATOR_CREDENTIALS_MODE ? `${name} (default)` : name);
+  return `Credentials delivery: ${modes.join(" or ")}`;
+}
+
+export const CLI_OPTION_DEFINITIONS = [
+  {
+    key: "version",
+    kind: "value",
+    names: ["-v", "--version"],
+    commands: ["prepare", "start", "run", "up"],
+    valueLabel: "<version>",
+    description: `AWS Emulator version (default: ${DEFAULT_VERSION})`,
+  },
+  {
+    key: "port",
+    kind: "value",
+    names: ["-p", "--port"],
+    commands: ["start", "run", "up"],
+    valueLabel: "<port>",
+    description: `Host port; 0 lets Docker choose one (default: ${DEFAULT_EMULATOR_PORT})`,
+  },
+  {
+    key: "telemetry",
+    kind: "value",
+    names: ["-t", "--telemetry"],
+    commands: ["start", "run", "up"],
+    valueLabel: "<on|off>",
+    description: `Telemetry setting (default: ${DEFAULT_EMULATOR_TELEMETRY})`,
+  },
+  {
+    key: "memory",
+    kind: "value",
+    names: ["--memory"],
+    commands: ["start", "run", "up"],
+    valueLabel: "<limit>",
+    description: `Container memory limit (default: ${DEFAULT_EMULATOR_MEMORY})`,
+  },
+  {
+    key: "stateDirectory",
+    kind: "value",
+    names: ["--state-dir"],
+    commands: ["start", "run", "up", "exec", "down"],
+    valueLabel: "<path>",
+    description: `Emulator state directory (default: AWS_EMULATOR_STATE_DIR or ~/${DEFAULT_EMULATOR_STATE_DIRECTORY_PARTS.join("/")})`,
+  },
+  {
+    key: "region",
+    kind: "value",
+    names: ["--region"],
+    commands: ["run", "exec", "up"],
+    upRequiresInit: true,
+    valueLabel: "<region>",
+    description: `Default region for the child command (default: ${DEFAULT_AWS_REGION})`,
+  },
+  {
+    key: "session",
+    kind: "value",
+    names: ["--session"],
+    commands: ["up", "exec", "down"],
+    valueLabel: "<name>",
+    description: "Persistent emulator session name",
+  },
+  {
+    key: "sdks",
+    kind: "sdk",
+    names: ["--sdk"],
+    commands: ["run", "exec", "up"],
+    upRequiresInit: true,
+    valueLabel: "<family>",
+    description: `Add SDK-specific TLS settings; repeatable (${SUPPORTED_EMULATOR_SDKS.join(", ")})`,
+  },
+  {
+    key: "credentials",
+    kind: "value",
+    names: ["--credentials"],
+    commands: ["run", "exec", "up"],
+    upRequiresInit: true,
+    valueLabel: `<${Object.keys(CLI_CREDENTIAL_MODE_NAMES).join("|")}>`,
+    description: getCredentialModeHelp(),
+  },
+  {
+    key: "shell",
+    kind: "flag",
+    names: ["--shell"],
+    commands: ["run", "exec", "up"],
+    upRequiresInit: true,
+    valueLabel: "",
+    description: "Enable .cmd/.bat and built-ins; trusted values only",
+  },
+  {
+    key: "init",
+    kind: "flag",
+    names: ["--init"],
+    commands: ["up"],
+    valueLabel: "",
+    description: "Run a command after the emulator becomes healthy",
+  },
+] as const satisfies readonly CliOptionDefinition[];
+
+type DefinedCliOption = (typeof CLI_OPTION_DEFINITIONS)[number];
+type CliOption = DefinedCliOption["key"];
+
+export type CliValueOption = Extract<DefinedCliOption, { kind: "value" }>["key"];
+export type CliOptions = Partial<Pick<CliOptionSource, CliOption>>;
 export type ParsedArgs =
   | { help: true }
   | { help: false; command?: string; options: CliOptions; commandArgs: string[] };
 
-type CliOption = CliValueOption | "sdk" | "shell" | "init";
+const OPTION_DEFINITION_BY_NAME = new Map<string, DefinedCliOption>();
+for (const definition of CLI_OPTION_DEFINITIONS) {
+  for (const name of definition.names) OPTION_DEFINITION_BY_NAME.set(name, definition);
+}
 
-const VALUE_OPTION_NAMES: Record<string, CliValueOption> = {
-  "-v": "version", "--version": "version",
-  "-p": "port", "--port": "port",
-  "-t": "telemetry", "--telemetry": "telemetry",
-  "--memory": "memory",
-  "--region": "region",
-  "--session": "session",
-  "--state-dir": "stateDirectory",
-  "--credentials": "credentials",
-};
+function requiresUpInit(definition: DefinedCliOption): boolean {
+  return "upRequiresInit" in definition && definition.upRequiresInit;
+}
 
-const OPTION_COMMANDS: Record<CliOption, readonly string[]> = {
-  version: ["prepare", "start", "run", "up"],
-  port: ["start", "run", "up"],
-  telemetry: ["start", "run", "up"],
-  memory: ["start", "run", "up"],
-  region: ["run", "exec", "up"],
-  session: ["up", "exec", "down"],
-  stateDirectory: ["start", "run", "up", "exec", "down"],
-  credentials: ["run", "exec", "up"],
-  sdk: ["run", "exec", "up"],
-  shell: ["run", "exec", "up"],
-  init: ["up"],
-};
+export function formatCliOptionHelp(): string[] {
+  return CLI_OPTION_DEFINITIONS.map((definition) => {
+    const names = definition.names.join(", ");
+    const valueLabel = definition.valueLabel ? ` ${definition.valueLabel}` : "";
+    const optionSyntax = `${names}${valueLabel}`;
+    const scope = definition.key === "init"
+      ? "(up only)"
+      : `(${definition.commands.map((command) => command === "up" && requiresUpInit(definition) ? "up --init" : command).join("/")})`;
+    return `  ${optionSyntax.padEnd(34)}${scope.padEnd(25)}${definition.description}`;
+  });
+}
 
-function requireOptionCommand(command: string | undefined, key: CliOption, token: string): void {
-  if (command && OPTION_COMMANDS[key].includes(command)) return;
-  if (key === "region") {
-    throw new Error("--region can only be used with the run or exec command, or with up --init.");
-  }
-  if (key === "session") {
-    throw new Error("--session can only be used with the up, exec, or down command.");
-  }
-  if (key === "stateDirectory") {
-    throw new Error("--state-dir can only be used with start, run, up, exec, or down.");
-  }
-  if (key === "credentials") {
-    throw new Error("--credentials can only be used with the run or exec command, or with up --init.");
-  }
-  if (key === "sdk") {
-    throw new Error("--sdk can only be used with the run or exec command, or with up --init.");
-  }
-  if (key === "shell") {
-    throw new Error("--shell can only be used with the run or exec command, or with up --init.");
-  }
-  if (key === "init") {
-    throw new Error("--init can only be used with the up command.");
-  }
+function requireOptionCommand(command: string | undefined, definition: DefinedCliOption, token: string): void {
+  const allowedCommands: readonly string[] = definition.commands;
+  if (command && allowedCommands.includes(command)) return;
   if (command === "exec" || command === "down") {
     throw new Error(`${token} cannot be used with the ${command} command.`);
   }
-  if (command === "prepare") {
-    throw new Error(`${token} can only be used with the start or run command.`);
-  }
-  const allowedCommands = OPTION_COMMANDS[key];
-  throw new Error(`${token} can only be used with ${allowedCommands.join(", ")} commands.`);
+  const formatCommandList = (commands: readonly string[]): string => {
+    const lastCommand = commands.at(-1);
+    const commandList = commands.length === 2
+      ? `${commands[0]} or ${lastCommand}`
+      : commands.length > 2
+        ? `${commands.slice(0, -1).join(", ")}, or ${lastCommand}`
+        : commands[0];
+    return commands.length <= 3 ? `the ${commandList} command` : commandList;
+  };
+  const directCommands = definition.commands.filter((allowedCommand) =>
+    !(allowedCommand === "up" && requiresUpInit(definition)));
+  const upInitOnly = requiresUpInit(definition) && definition.commands.includes("up");
+  const directCommandList = directCommands.length > 0 ? formatCommandList(directCommands) : undefined;
+  const initContext = upInitOnly ? "up --init" : undefined;
+  const allowedContexts = [directCommandList, initContext].filter((context): context is string => Boolean(context));
+  throw new Error(`${token} can only be used with ${allowedContexts.join(", or with ")}.`);
+}
+
+function hasUpInitOnlyOption(options: CliOptions): boolean {
+  const parsedOptionKeys = new Set(Object.keys(options));
+  return CLI_OPTION_DEFINITIONS.some((definition) =>
+    requiresUpInit(definition) && parsedOptionKeys.has(definition.key));
 }
 
 export function parseCliArgs(argv: string[]): ParsedArgs {
@@ -75,7 +197,6 @@ export function parseCliArgs(argv: string[]): ParsedArgs {
   const options: CliOptions = {};
   const commandArgs: string[] = [];
   let separator = false;
-  let initRequested = false;
   for (let index = 1; index < argv.length; index += 1) {
     const token = argv[index];
     if (separator) {
@@ -83,45 +204,42 @@ export function parseCliArgs(argv: string[]): ParsedArgs {
       continue;
     }
     if (token === "--") {
-      if (command === "up" && !initRequested) throw new Error("The up command accepts child arguments only after --init --.");
+      if (command === "up" && !options.init) throw new Error("The up command accepts child arguments only after --init --.");
       separator = true;
       continue;
     }
     if (token === "-h" || token === "--help") return { help: true };
-    if (token === "--init") {
-      requireOptionCommand(command, "init", token);
-      if (initRequested) throw new Error("--init can only be specified once.");
-      initRequested = true;
-      options.init = true;
+
+    const definition = OPTION_DEFINITION_BY_NAME.get(token);
+    if (!definition) throw new Error(`Unknown option: ${token}`);
+    requireOptionCommand(command, definition, token);
+
+    if (definition.kind === "flag") {
+      if (definition.key === "init") {
+        if (options.init) throw new Error("--init can only be specified once.");
+        options.init = true;
+      } else {
+        options.shell = true;
+      }
       continue;
     }
-    if (token === "--shell") {
-      requireOptionCommand(command, "shell", token);
-      options.shell = true;
-      continue;
-    }
-    if (token === "--sdk") {
-      requireOptionCommand(command, "sdk", token);
-      const value = argv[index + 1];
-      if (!value || value.startsWith("--")) throw new Error("Missing value for --sdk");
+
+    const value = argv[index + 1];
+    if (!value || value.startsWith("--")) throw new Error(`Missing value for ${token}`);
+    if (definition.kind === "sdk") {
       if (!(SUPPORTED_EMULATOR_SDKS as readonly string[]).includes(value)) {
         throw new Error(`Unsupported SDK: ${value}. Choose from ${SUPPORTED_EMULATOR_SDKS.join(", ")}.`);
       }
       options.sdks ??= [];
       options.sdks.push(value as EmulatorSdk);
-      index += 1;
-      continue;
-    }
-    const key = VALUE_OPTION_NAMES[token];
-    if (!key) throw new Error(`Unknown option: ${token}`);
-    requireOptionCommand(command, key, token);
-    const value = argv[index + 1];
-    if (!value || value.startsWith("--")) throw new Error(`Missing value for ${token}`);
-    if (key === "credentials") {
-      if (value !== "files" && value !== "env") throw new Error("--credentials must be files or env.");
-      options.credentials = value === "env" ? "environment" : "files";
+    } else if (definition.key === "credentials") {
+      const mode = Object.hasOwn(CLI_CREDENTIAL_MODE_NAMES, value)
+        ? CLI_CREDENTIAL_MODE_NAMES[value as keyof typeof CLI_CREDENTIAL_MODE_NAMES]
+        : undefined;
+      if (!mode) throw new Error(`--credentials must be ${Object.keys(CLI_CREDENTIAL_MODE_NAMES).join(" or ")}.`);
+      options.credentials = mode;
     } else {
-      options[key] = value;
+      options[definition.key] = value;
     }
     index += 1;
   }
@@ -129,10 +247,10 @@ export function parseCliArgs(argv: string[]): ParsedArgs {
     throw new Error(`--session is required with the ${command} command.`);
   }
   if (command === "up") {
-    if (initRequested && (!separator || commandArgs.length === 0)) {
+    if (options.init && (!separator || commandArgs.length === 0)) {
       throw new Error("Usage: awesome-emulator up --session <name> [options] --init -- <command> [args...]");
     }
-    if (!initRequested && (separator || options.region || options.sdks || options.shell || options.credentials)) {
+    if (!options.init && (separator || hasUpInitOnlyOption(options))) {
       throw new Error("Child command options and arguments for up require --init.");
     }
   }

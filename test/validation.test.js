@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
+import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { runWithEmulator, startEmulator } from "../dist/index.js";
+import { resolveEmulatorCredentialsMode, resolveEmulatorStateDirectory } from "../dist/emulator-options.js";
 
 const cliPath = fileURLToPath(new URL("../bin/awesome-emulator.js", import.meta.url));
 
@@ -24,6 +26,19 @@ test("rejects invalid memory limits before requiring Docker", async () => {
 
 test("rejects startup timeouts shorter than one second", async () => {
   await assert.rejects(startEmulator({ startupTimeoutMs: 999 }), /startupTimeoutMs/);
+});
+
+test("resolves credentials modes and their default from one supported list", () => {
+  assert.equal(resolveEmulatorCredentialsMode(undefined), "files");
+  assert.equal(resolveEmulatorCredentialsMode("environment"), "environment");
+  assert.throws(() => resolveEmulatorCredentialsMode("invalid"), /files or environment/);
+});
+
+test("uses the shared default state-directory path parts", () => {
+  assert.equal(
+    resolveEmulatorStateDirectory(undefined, {}, "/home/test", "/workspace"),
+    path.resolve("/home/test/.aws/emulator"),
+  );
 });
 
 test("rejects an empty child region before requiring Docker", async () => {
