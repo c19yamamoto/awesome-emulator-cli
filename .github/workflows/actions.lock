@@ -3,6 +3,8 @@
 # Docs: https://gh.io/actions-lockfile
 version: 'v0.0.3'
 workflows:
+    '.github/workflows/auto-merge-emulator-updates.yml':
+        - 'actions/checkout@v7.0.1'
     '.github/workflows/ci.yml':
         - 'actions/cache@v6.1.0'
         - 'actions/checkout@v7.0.1'
@@ -15,8 +17,8 @@ workflows:
     '.github/workflows/release-please.yml':
         - 'googleapis/release-please-action@v5.0.0'
     '.github/workflows/sdk-smoke.yml':
-        - 'actions/cache@v4.3.0'
         - 'actions-rust-lang/setup-rust-toolchain@v2.0.1'
+        - 'actions/cache@v6.1.0'
         - 'actions/checkout@v7.0.1'
         - 'actions/setup-dotnet@v6.1.0'
         - 'actions/setup-go@v7.1.0'
