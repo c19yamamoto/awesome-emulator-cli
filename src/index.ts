@@ -17,7 +17,9 @@ import {
 } from "./emulator-environment.js";
 import { readEmulatorCredentialEnvironment } from "./emulator-credentials.js";
 import { ensureEmulatorImage, getArchitecture, type EmulatorArchitecture } from "./emulator-image.js";
-import { isSessionOwnerRunning, readSession, removeSession, reserveSession, validateSessionName, writeRunningSession, type RunningSessionRecord } from "./session-store.js";
+import { isSessionOwnerRunning, readSession, removeSession, reserveSession, validateSessionName, writeRunningSession, writeStartingNativeSession, type NativeRunningSessionRecord, type RunningSessionRecord } from "./session-store.js";
+import { resolveEmulatorBackend } from "./emulator-backend.js";
+import { ensureNativeEmulator, isNativeProcessRunning, removeNativeRuntimeHome, startNativeEmulator, stopNativeProcess, type NativeEmulatorStartupProcess } from "./native-emulator.js";
 import {
   resolveEmulatorOptions,
   resolveEmulatorStateDirectory,
@@ -32,9 +34,10 @@ import { runCommand } from "./process.js";
 
 export type { PrepareEmulatorOptions, RunWithEmulatorOptions, StartEmulatorOptions } from "./emulator-options.js";
 export type { EmulatorCredentialsMode } from "./emulator-options.js";
+export type { EmulatorBackend } from "./emulator-options.js";
 export type { EmulatorEnvironment, EmulatorSdk } from "./emulator-environment.js";
 
-export type EmulatorSession = {
+type EmulatorSessionBase = {
   version: string;
   port: number;
   endpointUrl: string;
@@ -43,13 +46,21 @@ export type EmulatorSession = {
   credentialsFile: string;
   caFile: string;
   environment: EmulatorEnvironment;
-  containerId: string;
   stop: () => Promise<void>;
 };
 
-type StartedEmulatorSession = EmulatorSession & { containerPort: number };
+export type EmulatorSession = EmulatorSessionBase & (
+  | { backend: "docker"; containerId: string; processId?: never }
+  | { backend: "native"; processId: number; containerId?: never }
+);
 
-export type PersistentEmulatorSession = Omit<EmulatorSession, "containerId" | "stop"> & { name: string };
+type StartedEmulatorSession = EmulatorSession & {
+  containerPort: number;
+  processStartMarker?: string;
+  runtimeHome?: string;
+};
+
+export type PersistentEmulatorSession = Omit<EmulatorSession, "containerId" | "processId" | "stop"> & { name: string };
 export type EmulatorSessionExecOptions = Pick<RunWithEmulatorOptions, "shell" | "sdks" | "region" | "signal" | "stateDirectory" | "credentials">;
 export type EmulatorSessionInitCommand = {
   command: string;
@@ -80,10 +91,14 @@ const SESSION_CONTAINER_LABEL = "io.github.c19yamamoto.awesome-emulator-cli.sess
 const HEALTH_CHECK_INTERVAL_MS = 250;
 const CONTAINER_STATUS_CHECK_INTERVAL_MS = 1000;
 
-/** Build or reuse the selected AWS Emulator Docker image without starting a container. */
+/** Download and verify the selected runtime without starting an emulator. */
 export async function prepareEmulatorImage(options: PrepareEmulatorOptions = {}): Promise<string> {
   throwIfAborted(options.signal);
   const version = resolveEmulatorVersion(options.version);
+  const backend = resolveEmulatorBackend(options.backend);
+  if (backend === "native") {
+    return ensureNativeEmulator(version, options.signal);
+  }
   return ensureEmulatorImage(version, getArchitecture(), options.signal);
 }
 
@@ -214,9 +229,42 @@ async function startEmulatorWithIdentity(
   containerName: string,
   labels: Record<string, string>,
   stateDirectory = resolveEmulatorStateDirectory(options.stateDirectory),
+  persistent = false,
+  onNativeSpawn?: (process: NativeEmulatorStartupProcess) => Promise<void>,
 ): Promise<StartedEmulatorSession> {
   throwIfAborted(options.signal);
   const { version, requestedPort, telemetry, memory, startupTimeoutMs } = resolveEmulatorOptions(options);
+  let backend = resolveEmulatorBackend(options.backend);
+  if (backend === "native" && options.memory !== undefined) {
+    if (options.backend === "auto") backend = "docker";
+    else {
+      throw new Error("--memory is available only with the Docker backend.");
+    }
+  }
+  if (backend === "native") {
+    const native = await startNativeEmulator({
+      version,
+      port: requestedPort,
+      telemetry,
+      startupTimeoutMs,
+      stateDirectory,
+      signal: options.signal,
+      persistent,
+      onSpawn: onNativeSpawn,
+    }, stateDirectory);
+    return {
+      version,
+      backend: "native",
+      port: native.port,
+      containerPort: native.port,
+      ...createEmulatorConnectionSettings(native.port, stateDirectory),
+      processId: native.processId,
+      processStartMarker: native.processStartMarker,
+      runtimeHome: native.runtimeHome,
+      stop: native.stop,
+    };
+  }
+
   let port = requestedPort;
   throwIfAborted(options.signal);
   const architecture = getArchitecture();
@@ -258,6 +306,7 @@ async function startEmulatorWithIdentity(
 
   return {
     version,
+    backend: "docker",
     port,
     containerPort,
     ...connectionSettings,
@@ -268,7 +317,12 @@ async function startEmulatorWithIdentity(
 
 export async function startEmulator(options: StartEmulatorOptions = {}): Promise<EmulatorSession> {
   const containerName = `awesome-emulator-cli-${process.pid}-${randomBytes(4).toString("hex")}`;
-  const { containerPort: _containerPort, ...session } = await startEmulatorWithIdentity(options, containerName, { [MANAGED_CONTAINER_LABEL]: "true" });
+  const {
+    containerPort: _containerPort,
+    processStartMarker: _processStartMarker,
+    runtimeHome: _runtimeHome,
+    ...session
+  } = await startEmulatorWithIdentity(options, containerName, { [MANAGED_CONTAINER_LABEL]: "true" });
   return session;
 }
 
@@ -287,15 +341,28 @@ export async function upEmulatorSession(
     : undefined;
   if (init && !init.command) throw new Error("An initialization command is required.");
   const stateDirectory = resolveEmulatorStateDirectory(emulatorOptions.stateDirectory);
+  let backend = resolveEmulatorBackend(emulatorOptions.backend);
+  if (backend === "native" && emulatorOptions.memory !== undefined) {
+    if (emulatorOptions.backend === "auto") backend = "docker";
+    else throw new Error("--memory is available only with the Docker backend.");
+  }
   const containerName = `awesome-emulator-cli-session-${randomBytes(4).toString("hex")}-${name}`;
   await reserveSession(stateDirectory, name, containerName);
 
   let emulator: StartedEmulatorSession | undefined;
   try {
-    emulator = await startEmulatorWithIdentity(emulatorOptions, containerName, {
+    emulator = await startEmulatorWithIdentity({ ...emulatorOptions, backend }, containerName, {
       [MANAGED_CONTAINER_LABEL]: "true",
       [SESSION_CONTAINER_LABEL]: name,
-    }, stateDirectory);
+    }, stateDirectory, true, backend === "native"
+      ? (nativeProcess) => writeStartingNativeSession(
+        stateDirectory,
+        name,
+        nativeProcess.processId,
+        nativeProcess.processStartMarker,
+        nativeProcess.runtimeHome,
+      )
+      : undefined);
     if (init && initOptions) {
       const childEnvironment = await createCommandEnvironment(process.env, emulator.environment, initOptions);
       const exitCode = await runCommand(init.command, init.args ?? [], childEnvironment, options.signal, init.shell ?? false, "stderr");
@@ -304,19 +371,40 @@ export async function upEmulatorSession(
         throw new Error(`Emulator session "${name}" initialization command failed with exit code ${exitCode}.`);
       }
     }
-    const record: RunningSessionRecord = {
-      schemaVersion: 2,
-      name,
-      state: "running",
-      containerName,
-      containerId: emulator.containerId,
-      version: emulator.version,
-      port: emulator.port,
-      containerPort: emulator.containerPort,
-    };
+    const record: RunningSessionRecord | NativeRunningSessionRecord = emulator.backend === "native"
+      ? {
+        schemaVersion: 3,
+        backend: "native",
+        name,
+        state: "running",
+        containerName,
+        processId: emulator.processId,
+        processStartMarker: emulator.processStartMarker!,
+        runtimeHome: emulator.runtimeHome!,
+        version: emulator.version,
+        port: emulator.port,
+      }
+      : {
+        schemaVersion: 2,
+        name,
+        state: "running",
+        containerName,
+        containerId: emulator.containerId,
+        version: emulator.version,
+        port: emulator.port,
+        containerPort: emulator.containerPort,
+      };
     await writeRunningSession(stateDirectory, record);
     throwIfAborted(options.signal);
-    const { containerId: _containerId, containerPort: _containerPort, stop: _stop, ...publicSession } = emulator;
+    const {
+      containerId: _containerId,
+      processId: _processId,
+      processStartMarker: _processStartMarker,
+      runtimeHome: _runtimeHome,
+      containerPort: _containerPort,
+      stop: _stop,
+      ...publicSession
+    } = emulator;
     return { name, ...publicSession };
   } catch (error) {
     const cleanupErrors: unknown[] = [];
@@ -384,15 +472,24 @@ export async function execEmulatorSession(
   if (session.state !== "running") {
     throw new Error(`Emulator session "${name}" is still starting. Wait for "awesome-emulator up" to finish before running commands.`);
   }
-  const container = await inspectSessionContainer(name, session.containerName);
-  if (!container) {
-    throw new Error(`Emulator session "${name}" is stale. Run "awesome-emulator down --session ${name}" to remove it.`);
-  }
-  if (container.containerId !== session.containerId) {
-    throw new Error(`Emulator session "${name}" no longer matches its Docker container. Run "awesome-emulator down --session ${name}" to remove it.`);
-  }
-  if (!container.running) {
-    throw new Error(`Emulator session "${name}" is not running. Run "awesome-emulator down --session ${name}" to remove it.`);
+  if (session.schemaVersion === 3 && session.backend === "native") {
+    if (!isNativeProcessRunning(session.processId, session.processStartMarker)) {
+      throw new Error(`Emulator session "${name}" is stale. Run "awesome-emulator down --session ${name}" to remove it.`);
+    }
+  } else {
+    if (!("containerId" in session)) {
+      throw new Error(`Emulator session "${name}" has invalid Docker metadata. Run "awesome-emulator down --session ${name}" to remove it.`);
+    }
+    const container = await inspectSessionContainer(name, session.containerName);
+    if (!container) {
+      throw new Error(`Emulator session "${name}" is stale. Run "awesome-emulator down --session ${name}" to remove it.`);
+    }
+    if (container.containerId !== session.containerId) {
+      throw new Error(`Emulator session "${name}" no longer matches its Docker container. Run "awesome-emulator down --session ${name}" to remove it.`);
+    }
+    if (!container.running) {
+      throw new Error(`Emulator session "${name}" is not running. Run "awesome-emulator down --session ${name}" to remove it.`);
+    }
   }
 
   const emulator = createEmulatorConnectionSettings(session.port, stateDirectory, session.schemaVersion === 2 ? session.containerPort : session.port);
@@ -415,8 +512,16 @@ export async function downEmulatorSession(
     throw new Error(`Emulator session "${name}" is still starting. Retry after "awesome-emulator up" finishes.`);
   }
 
-  const container = await inspectSessionContainer(name, session.containerName);
-  if (container) await stopContainer(container.containerId);
+  if (session.state === "starting" && session.schemaVersion === 2 && session.backend === "native") {
+    await stopNativeProcess(session.processId, session.processStartMarker);
+    await removeNativeRuntimeHome(stateDirectory, session.runtimeHome);
+  } else if (session.state === "running" && session.schemaVersion === 3 && session.backend === "native") {
+    await stopNativeProcess(session.processId, session.processStartMarker);
+    await removeNativeRuntimeHome(stateDirectory, session.runtimeHome);
+  } else {
+    const container = await inspectSessionContainer(name, session.containerName);
+    if (container) await stopContainer(container.containerId);
+  }
   await removeSession(stateDirectory, name);
 }
 

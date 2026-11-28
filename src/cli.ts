@@ -57,6 +57,7 @@ async function main(signal: AbortSignal): Promise<number> {
   if (parsed.command === "up") {
     const [initCommand, ...initArgs] = parsed.commandArgs;
     const session = await upEmulatorSession(parsed.options.session!, {
+      backend: parsed.options.backend,
       version: parsed.options.version,
       port: parsed.options.port,
       telemetry: parsed.options.telemetry,
@@ -97,13 +98,14 @@ async function main(signal: AbortSignal): Promise<number> {
   }
 
   if (parsed.command === "prepare") {
-    const image = await prepareEmulatorImage({ version: parsed.options.version, signal });
-    console.log(`AWS Emulator image is ready: ${image}`);
+    const runtime = await prepareEmulatorImage({ backend: parsed.options.backend, version: parsed.options.version, signal });
+    console.log(`AWS Emulator runtime is ready: ${runtime}`);
     return 0;
   }
 
   if (parsed.command === "start") {
     const emulator = await startEmulator({
+      backend: parsed.options.backend,
       version: parsed.options.version,
       port: parsed.options.port,
       telemetry: parsed.options.telemetry,
@@ -114,6 +116,7 @@ async function main(signal: AbortSignal): Promise<number> {
     try {
       if (!signal.aborted) {
         console.log(JSON.stringify({
+          backend: emulator.backend,
           version: emulator.version,
           endpointUrl: emulator.endpointUrl,
           healthCheckUrl: emulator.healthCheckUrl,

@@ -5,6 +5,10 @@ import path from "node:path";
 export const EMULATOR_CREDENTIALS_MODES = ["files", "environment"] as const;
 export type EmulatorCredentialsMode = typeof EMULATOR_CREDENTIALS_MODES[number];
 
+export const EMULATOR_BACKENDS = ["docker", "native", "auto"] as const;
+export type EmulatorBackend = typeof EMULATOR_BACKENDS[number];
+export type ResolvedEmulatorBackend = Exclude<EmulatorBackend, "auto">;
+
 export const DEFAULT_EMULATOR_CREDENTIALS_MODE = EMULATOR_CREDENTIALS_MODES[0];
 
 export const DEFAULT_EMULATOR_PORT = 9297;
@@ -25,6 +29,8 @@ export function resolveEmulatorCredentialsMode(value: string | undefined): Emula
 }
 
 export type StartEmulatorOptions = {
+  /** Runtime backend. Defaults to Docker to preserve existing behavior. */
+  backend?: EmulatorBackend;
   version?: string;
   stateDirectory?: string;
   port?: number | string;
@@ -49,7 +55,7 @@ export type RunWithEmulatorOptions = StartEmulatorOptions & {
   credentials?: EmulatorCredentialsMode;
 };
 
-export type PrepareEmulatorOptions = Pick<StartEmulatorOptions, "version" | "signal">;
+export type PrepareEmulatorOptions = Pick<StartEmulatorOptions, "backend" | "version" | "signal">;
 
 export type ResolvedEmulatorOptions = {
   version: string;

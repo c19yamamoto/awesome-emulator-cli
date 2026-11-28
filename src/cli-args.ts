@@ -1,6 +1,7 @@
 import type { EmulatorCredentialsMode, RunWithEmulatorOptions } from "./emulator-options.js";
 import { DEFAULT_AWS_REGION, SUPPORTED_EMULATOR_SDKS, type EmulatorSdk } from "./emulator-environment.js";
 import {
+  EMULATOR_BACKENDS,
   DEFAULT_EMULATOR_CREDENTIALS_MODE,
   DEFAULT_EMULATOR_MEMORY,
   DEFAULT_EMULATOR_PORT,
@@ -38,6 +39,14 @@ function getCredentialModeHelp(): string {
 
 export const CLI_OPTION_DEFINITIONS = [
   {
+    key: "backend",
+    kind: "value",
+    names: ["--backend"],
+    commands: ["prepare", "start", "run", "up"],
+    valueLabel: "<docker|native|auto>",
+    description: "Runtime backend (default: docker)",
+  },
+  {
     key: "version",
     kind: "value",
     names: ["-v", "--version"],
@@ -51,7 +60,7 @@ export const CLI_OPTION_DEFINITIONS = [
     names: ["-p", "--port"],
     commands: ["start", "run", "up"],
     valueLabel: "<port>",
-    description: `Host port; 0 lets Docker choose one (default: ${DEFAULT_EMULATOR_PORT})`,
+    description: `Host port; 0 selects an available port (default: ${DEFAULT_EMULATOR_PORT})`,
   },
   {
     key: "telemetry",
@@ -67,7 +76,7 @@ export const CLI_OPTION_DEFINITIONS = [
     names: ["--memory"],
     commands: ["start", "run", "up"],
     valueLabel: "<limit>",
-    description: `Container memory limit (default: ${DEFAULT_EMULATOR_MEMORY})`,
+    description: `Docker container memory limit (default: ${DEFAULT_EMULATOR_MEMORY}; unavailable with native)`,
   },
   {
     key: "stateDirectory",
@@ -238,6 +247,11 @@ export function parseCliArgs(argv: string[]): ParsedArgs {
         : undefined;
       if (!mode) throw new Error(`--credentials must be ${Object.keys(CLI_CREDENTIAL_MODE_NAMES).join(" or ")}.`);
       options.credentials = mode;
+    } else if (definition.key === "backend") {
+      if (!(EMULATOR_BACKENDS as readonly string[]).includes(value)) {
+        throw new Error(`--backend must be ${EMULATOR_BACKENDS.join(", ")}.`);
+      }
+      options.backend = value as CliOptions["backend"];
     } else {
       options[definition.key] = value;
     }

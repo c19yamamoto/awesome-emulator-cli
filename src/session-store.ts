@@ -1,4 +1,5 @@
 import { chmod, mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import path from "node:path";
@@ -12,6 +13,19 @@ export type StartingSessionRecord = {
   containerName: string;
   ownerPid: number;
   ownerStartMarker: string;
+};
+
+export type NativeStartingSessionRecord = {
+  schemaVersion: 2;
+  backend: "native";
+  name: string;
+  state: "starting";
+  containerName: string;
+  ownerPid: number;
+  ownerStartMarker: string;
+  processId: number;
+  processStartMarker: string;
+  runtimeHome: string;
 };
 
 export type LegacyRunningSessionRecord = {
@@ -37,7 +51,20 @@ export type RunningSessionRecord = {
   containerPort: number;
 };
 
-export type SessionRecord = StartingSessionRecord | LegacyRunningSessionRecord | RunningSessionRecord;
+export type NativeRunningSessionRecord = {
+  schemaVersion: 3;
+  backend: "native";
+  name: string;
+  state: "running";
+  containerName: string;
+  processId: number;
+  processStartMarker: string;
+  runtimeHome: string;
+  version: string;
+  port: number;
+};
+
+export type SessionRecord = StartingSessionRecord | NativeStartingSessionRecord | LegacyRunningSessionRecord | RunningSessionRecord | NativeRunningSessionRecord;
 
 export function validateSessionName(name: string): string {
   if (!SESSION_NAME_PATTERN.test(name)) {
@@ -46,8 +73,18 @@ export function validateSessionName(name: string): string {
   return name;
 }
 
-function getProcessStartMarker(pid: number): string | undefined {
+export function getProcessStartMarker(pid: number): string | undefined {
   if (!Number.isSafeInteger(pid) || pid <= 0) return undefined;
+  if (process.platform === "linux") {
+    try {
+      const processStat = readFileSync("/proc/" + pid + "/stat", "utf8");
+      const closingParenthesis = processStat.lastIndexOf(")");
+      const fields = processStat.slice(closingParenthesis + 1).trim().split(/\s+/);
+      if (closingParenthesis >= 0 && fields[19]) return "linux:" + fields[19];
+    } catch {
+      // Fall back to ps if procfs is unavailable or restricted.
+    }
+  }
   const isWindows = process.platform === "win32";
   const command = isWindows ? "powershell.exe" : "ps";
   const args = isWindows
@@ -74,7 +111,7 @@ function isProcessRunning(pid: number): boolean {
   }
 }
 
-export function isSessionOwnerRunning(record: StartingSessionRecord): boolean {
+export function isSessionOwnerRunning(record: StartingSessionRecord | NativeStartingSessionRecord): boolean {
   const currentStartMarker = getProcessStartMarker(record.ownerPid);
   if (currentStartMarker) return record.ownerStartMarker === currentStartMarker;
   if (isProcessRunning(record.ownerPid)) {
@@ -119,9 +156,45 @@ export async function reserveSession(
   return filename;
 }
 
-export async function writeRunningSession(stateDirectory: string, record: RunningSessionRecord): Promise<void> {
+export async function writeRunningSession(
+  stateDirectory: string,
+  record: RunningSessionRecord | NativeRunningSessionRecord,
+): Promise<void> {
   validateSessionName(record.name);
   const filename = sessionPath(stateDirectory, record.name);
+  const temporaryFilename = `${filename}.${process.pid}.${randomBytes(4).toString("hex")}.tmp`;
+  try {
+    await writeFile(temporaryFilename, `${JSON.stringify(record)}\n`, { flag: "wx", mode: 0o600 });
+    await rename(temporaryFilename, filename);
+  } finally {
+    await unlink(temporaryFilename).catch(() => {});
+  }
+}
+
+export async function writeStartingNativeSession(
+  stateDirectory: string,
+  name: string,
+  processId: number,
+  processStartMarker: string,
+  runtimeHome: string,
+): Promise<void> {
+  const existing = await readSession(stateDirectory, name);
+  if (existing.state !== "starting") {
+    throw new Error(`Emulator session "${name}" is no longer starting.`);
+  }
+  const record: NativeStartingSessionRecord = {
+    schemaVersion: 2,
+    backend: "native",
+    name,
+    state: "starting",
+    containerName: existing.containerName,
+    ownerPid: existing.ownerPid,
+    ownerStartMarker: existing.ownerStartMarker,
+    processId,
+    processStartMarker,
+    runtimeHome,
+  };
+  const filename = sessionPath(stateDirectory, name);
   const temporaryFilename = `${filename}.${process.pid}.${randomBytes(4).toString("hex")}.tmp`;
   try {
     await writeFile(temporaryFilename, `${JSON.stringify(record)}\n`, { flag: "wx", mode: 0o600 });
@@ -149,7 +222,7 @@ export async function readSession(stateDirectory: string, name: string): Promise
   } catch {
     throw new Error(`Emulator session "${name}" has invalid metadata. Remove its session file before continuing.`);
   }
-  if (!isSessionRecord(record, name)) {
+  if (!isSessionRecord(record, name, stateDirectory)) {
     throw new Error(`Emulator session "${name}" has invalid metadata. Remove its session file before continuing.`);
   }
   return record;
@@ -164,12 +237,26 @@ export async function removeSession(stateDirectory: string, name: string): Promi
   }
 }
 
-function isSessionRecord(value: unknown, expectedName: string): value is SessionRecord {
+function isSessionRecord(value: unknown, expectedName: string, stateDirectory: string): value is SessionRecord {
   if (typeof value !== "object" || value === null) return false;
   const record = value as Record<string, unknown>;
   if (record.name !== expectedName || typeof record.containerName !== "string") return false;
   if (!record.containerName.startsWith("awesome-emulator-cli-session-") || !record.containerName.endsWith(`-${record.name}`)) return false;
   if (record.state === "starting") {
+    if (record.schemaVersion === 2 && record.backend === "native") {
+      const runtimeHomeRoot = path.resolve(stateDirectory, ".awesome-emulator-cli-native") + path.sep;
+      const runtimeHome = typeof record.runtimeHome === "string" ? path.resolve(record.runtimeHome) : "";
+      return Number.isSafeInteger(record.ownerPid)
+        && Number(record.ownerPid) > 0
+        && typeof record.ownerStartMarker === "string"
+        && record.ownerStartMarker.length > 0
+        && Number.isSafeInteger(record.processId)
+        && Number(record.processId) > 0
+        && typeof record.processStartMarker === "string"
+        && record.processStartMarker.length > 0
+        && path.isAbsolute(runtimeHome)
+        && runtimeHome.startsWith(runtimeHomeRoot);
+    }
     return record.schemaVersion === 1
       && Number.isSafeInteger(record.ownerPid)
       && Number(record.ownerPid) > 0
@@ -177,6 +264,20 @@ function isSessionRecord(value: unknown, expectedName: string): value is Session
       && record.ownerStartMarker.length > 0;
   }
   if (record.state !== "running") return false;
+  if (record.schemaVersion === 3 && record.backend === "native") {
+    const runtimeHomeRoot = path.resolve(stateDirectory, ".awesome-emulator-cli-native") + path.sep;
+    const runtimeHome = typeof record.runtimeHome === "string" ? path.resolve(record.runtimeHome) : "";
+    return Number.isSafeInteger(record.processId)
+      && Number(record.processId) > 0
+      && typeof record.processStartMarker === "string"
+      && record.processStartMarker.length > 0
+      && path.isAbsolute(runtimeHome)
+      && runtimeHome.startsWith(runtimeHomeRoot)
+      && typeof record.version === "string"
+      && Number.isInteger(record.port)
+      && Number(record.port) > 0
+      && Number(record.port) <= 65535;
+  }
   const validRunningRecord = typeof record.containerId === "string"
     && /^[a-f0-9]{12,64}$/i.test(record.containerId)
     && typeof record.version === "string"
