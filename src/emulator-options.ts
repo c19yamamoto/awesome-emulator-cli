@@ -2,12 +2,24 @@ import type { EmulatorSdk } from "./emulator-environment.js";
 import os from "node:os";
 import path from "node:path";
 
-export type EmulatorCredentialsMode = "files" | "environment";
+export const EMULATOR_CREDENTIALS_MODES = ["files", "environment"] as const;
+export type EmulatorCredentialsMode = typeof EMULATOR_CREDENTIALS_MODES[number];
+
+export const DEFAULT_EMULATOR_CREDENTIALS_MODE = EMULATOR_CREDENTIALS_MODES[0];
+
+export const DEFAULT_EMULATOR_PORT = 9297;
+export const DEFAULT_EMULATOR_TELEMETRY = "on" as const;
+export const DEFAULT_EMULATOR_MEMORY = "2g";
+export const DEFAULT_EMULATOR_STATE_DIRECTORY_PARTS = [".aws", "emulator"] as const;
+
+function isEmulatorCredentialsMode(value: string): value is EmulatorCredentialsMode {
+  return (EMULATOR_CREDENTIALS_MODES as readonly string[]).includes(value);
+}
 
 export function resolveEmulatorCredentialsMode(value: string | undefined): EmulatorCredentialsMode {
-  const mode = value ?? "files";
-  if (mode !== "files" && mode !== "environment") {
-    throw new Error("Credentials mode must be files or environment.");
+  const mode = value ?? DEFAULT_EMULATOR_CREDENTIALS_MODE;
+  if (!isEmulatorCredentialsMode(mode)) {
+    throw new Error(`Credentials mode must be ${EMULATOR_CREDENTIALS_MODES.join(" or ")}.`);
   }
   return mode;
 }
@@ -57,12 +69,13 @@ export function resolveEmulatorStateDirectory(
   if (configuredDirectory !== undefined && configuredDirectory.trim().length === 0) {
     throw new Error("Emulator state directory must not be empty.");
   }
-  return path.resolve(workingDirectory, configuredDirectory ?? path.join(homeDirectory, ".aws", "emulator"));
+  return path.resolve(
+    workingDirectory,
+    configuredDirectory ?? path.join(homeDirectory, ...DEFAULT_EMULATOR_STATE_DIRECTORY_PARTS),
+  );
 }
 
 export const DEFAULT_VERSION = "1.0.757";
-const DEFAULT_PORT = 9297;
-const DEFAULT_MEMORY = "2g";
 
 function normalizeVersion(value: string | undefined, environment: NodeJS.ProcessEnv): string {
   const version = value ?? environment.AWS_EMULATOR_VERSION ?? DEFAULT_VERSION;
@@ -80,7 +93,7 @@ export function resolveEmulatorVersion(
 }
 
 function normalizePort(value: number | string | undefined, environment: NodeJS.ProcessEnv): number {
-  const port = Number(value ?? environment.AWS_EMULATOR_PORT ?? DEFAULT_PORT);
+  const port = Number(value ?? environment.AWS_EMULATOR_PORT ?? DEFAULT_EMULATOR_PORT);
   if (!Number.isInteger(port) || port < 0 || port > 65535) {
     throw new Error(`Invalid port: ${value}. Use a number from 0 to 65535.`);
   }
@@ -88,14 +101,14 @@ function normalizePort(value: number | string | undefined, environment: NodeJS.P
 }
 
 function normalizeTelemetry(value: string | undefined, environment: NodeJS.ProcessEnv): "on" | "off" {
-  const telemetry = String(value ?? environment.EMULATOR_TELEMETRY ?? "on").toLowerCase();
+  const telemetry = String(value ?? environment.EMULATOR_TELEMETRY ?? DEFAULT_EMULATOR_TELEMETRY).toLowerCase();
   if (["on", "true", "1"].includes(telemetry)) return "on";
   if (["off", "false", "0"].includes(telemetry)) return "off";
   throw new Error(`Invalid telemetry setting: ${value}. Use on or off.`);
 }
 
 function normalizeMemory(value: string | undefined): string {
-  const memory = String(value ?? DEFAULT_MEMORY);
+  const memory = String(value ?? DEFAULT_EMULATOR_MEMORY);
   if (!/^\d+(?:\.\d+)?[kmgt]$/i.test(memory) || Number.parseFloat(memory) <= 0) {
     throw new Error(`Invalid memory limit: ${value}. Use a Docker memory value such as 2g.`);
   }
