@@ -55,7 +55,7 @@ jobs:
         with:
           dotnet-version: "8.0.x"
 
-      - uses: actions/cache@v4.3.0
+      - uses: actions/cache@v6.1.0
         with:
           path: ~/.nuget/packages
           key: nuget-${{ runner.os }}-${{ hashFiles('examples/sdk-smoke/dotnet/Smoke.csproj') }}
@@ -73,7 +73,7 @@ jobs:
         name: Set weekly image cache period
         run: echo "week=$(date -u +%G-W%V)" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/cache@v4.3.0
+      - uses: actions/cache@v6.1.0
         id: emulator-image-cache
         with:
           path: ${{ runner.temp }}/aws-emulator-image.tar
