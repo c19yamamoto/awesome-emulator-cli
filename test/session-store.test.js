@@ -190,7 +190,14 @@ test("handles unavailable process markers and non-missing session file errors", 
 
   const blockedDirectory = path.join(directory, "blocked.json");
   await writeFile(blockedDirectory, "file");
-  await assert.rejects(readSession(blockedDirectory, "ci-tests"), { code: "ENOTDIR" });
+  await assert.rejects(readSession(blockedDirectory, "ci-tests"), (error) => {
+    if (process.platform === "win32") {
+      assert.match(error.message, /Emulator session .* was not found/);
+    } else {
+      assert.equal(error.code, "ENOTDIR");
+    }
+    return true;
+  });
 });
 
 test("uses system process markers when available and detects absent owner processes", async (t) => {
