@@ -111,10 +111,14 @@ function isProcessRunning(pid: number): boolean {
   }
 }
 
-export function isSessionOwnerRunning(record: StartingSessionRecord | NativeStartingSessionRecord): boolean {
-  const currentStartMarker = getProcessStartMarker(record.ownerPid);
+export function isSessionOwnerRunning(
+  record: StartingSessionRecord | NativeStartingSessionRecord,
+  readStartMarker: (pid: number) => string | undefined = getProcessStartMarker,
+  checkRunning: (pid: number) => boolean = isProcessRunning,
+): boolean {
+  const currentStartMarker = readStartMarker(record.ownerPid);
   if (currentStartMarker) return record.ownerStartMarker === currentStartMarker;
-  if (isProcessRunning(record.ownerPid)) {
+  if (checkRunning(record.ownerPid)) {
     throw new Error(`Could not verify the owner process for emulator session "${record.name}". Ensure ${process.platform === "win32" ? "Windows PowerShell" : "ps"} is available, then retry.`);
   }
   return false;
@@ -128,9 +132,10 @@ export async function reserveSession(
   stateDirectory: string,
   name: string,
   containerName: string,
+  readStartMarker: (pid: number) => string | undefined = getProcessStartMarker,
 ): Promise<string> {
   const filename = sessionPath(stateDirectory, name);
-  const ownerStartMarker = getProcessStartMarker(process.pid);
+  const ownerStartMarker = readStartMarker(process.pid);
   if (!ownerStartMarker) {
     throw new Error(`Could not identify the startup process. Ensure ${process.platform === "win32" ? "Windows PowerShell" : "ps"} is available to manage persistent sessions.`);
   }

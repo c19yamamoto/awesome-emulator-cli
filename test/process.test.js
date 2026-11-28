@@ -50,6 +50,43 @@ test("can route child stdout to stderr to preserve a machine-readable parent std
   assert.equal(result.stderr, "initializer output");
 });
 
+test("rejects when the operating system cannot start the requested child", async () => {
+  await assert.rejects(
+    runCommand("awesome-emulator-command-that-does-not-exist", [], process.env),
+    { code: "ENOENT" },
+  );
+});
+
+test("returns 1 when a child exits because of a signal without a forwarded parent signal", async () => {
+  const result = await runCommand(
+    process.execPath,
+    ["-e", "process.kill(process.pid, 'SIGTERM')"],
+    process.env,
+  );
+  assert.equal(result, 1);
+});
+
+test("forwards abort cancellation and returns the mapped signal exit code", async () => {
+  const controller = new AbortController();
+  const result = runCommand(process.execPath, ["-e", "setTimeout(() => {}, 5000)"], process.env, controller.signal);
+  setTimeout(() => controller.abort("SIGTERM"), 50);
+  assert.equal(await result, 143);
+});
+
+test("uses the fallback signal for unknown abort reasons and ignores duplicate forwarding", async () => {
+  const controller = new AbortController();
+  const result = runCommand(process.execPath, ["-e", "setTimeout(() => {}, 5000)"], process.env, controller.signal);
+  controller.abort("cancelled by caller");
+  process.emit("SIGTERM");
+  assert.equal(await result, 143);
+});
+
+test("forwards cancellation when the abort signal was already set", async () => {
+  const controller = new AbortController();
+  controller.abort("not a signal name");
+  assert.equal(await runCommand(process.execPath, ["-e", "setTimeout(() => {}, 5000)"], process.env, controller.signal), 143);
+});
+
 test(
   "supports Windows batch commands through an explicit trusted-shell opt-in",
   { skip: process.platform !== "win32" },

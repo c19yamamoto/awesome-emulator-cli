@@ -11,10 +11,10 @@ const PACKAGE_SIGNING_KEY = "https://downloads.aws.com/keys/gpg/current.asc";
 const PACKAGE_SIGNING_FINGERPRINT = "98BCF336A3BE53B734E967C52E5BF49BD940F624";
 export const EMULATOR_CONTAINER_PORT = 9297;
 
-export function getArchitecture(): EmulatorArchitecture {
-  if (process.arch === "x64") return { docker: "amd64", rpm: "x86_64" };
-  if (process.arch === "arm64") return { docker: "arm64", rpm: "aarch64" };
-  throw new Error(`AWS Emulator is not available for this architecture: ${process.arch}.`);
+export function getArchitecture(architecture = process.arch): EmulatorArchitecture {
+  if (architecture === "x64") return { docker: "amd64", rpm: "x86_64" };
+  if (architecture === "arm64") return { docker: "arm64", rpm: "aarch64" };
+  throw new Error(`AWS Emulator is not available for this architecture: ${architecture}.`);
 }
 
 export function createEmulatorDockerfile(): string {

@@ -1,6 +1,10 @@
 node_modules/
 npm-debug.log*
 dist/
+.coverage-tools/
+coverage/
+!scripts/coverage/
+!scripts/coverage/**/*.ts
 examples/sdk-smoke/**/target/
 examples/sdk-smoke/dotnet/bin/
 examples/sdk-smoke/dotnet/obj/
