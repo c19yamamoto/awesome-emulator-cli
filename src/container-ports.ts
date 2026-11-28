@@ -35,9 +35,12 @@ export async function getPublishedPort(
   return parsePublishedPort(publishedPort, containerPort);
 }
 
-export async function reserveContainerPort(stateDirectory: string): Promise<number> {
+export async function reserveContainerPort(
+  stateDirectory: string,
+  choosePort: () => number = () => randomInt(FIRST_EPHEMERAL_PORT, PORT_LIMIT),
+): Promise<number> {
   for (let attempt = 0; attempt < 128; attempt += 1) {
-    const port = randomInt(FIRST_EPHEMERAL_PORT, PORT_LIMIT);
+    const port = choosePort();
     try {
       await mkdir(path.join(stateDirectory, String(port)), { mode: 0o700 });
       return port;

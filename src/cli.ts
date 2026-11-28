@@ -33,7 +33,7 @@ function signalExitCode(signal: AbortSignal): number {
   return getSignalExitCode(signal.reason);
 }
 
-function formatError(error: unknown): string {
+export function formatError(error: unknown): string {
   if (error instanceof AggregateError) {
     const causes = [...error.errors].map(formatError);
     return causes.length > 0 ? `${error.message}\n${causes.map((cause) => `  ${cause}`).join("\n")}` : error.message;
@@ -41,8 +41,8 @@ function formatError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-async function main(signal: AbortSignal): Promise<number> {
-  const parsed = parseCliArgs(process.argv.slice(2));
+export async function runCli(argv: string[], signal: AbortSignal): Promise<number> {
+  const parsed = parseCliArgs(argv);
   if (parsed.help || !parsed.command || parsed.command === "help") {
     usage();
     return 0;
@@ -133,23 +133,25 @@ async function main(signal: AbortSignal): Promise<number> {
   throw new Error(`Unknown command: ${parsed.command}`);
 }
 
-const controller = new AbortController();
-const signalHandlers = new Map<ForwardedSignal, () => void>();
-for (const signal of FORWARDED_SIGNALS) {
-  const handler = () => controller.abort(signal);
-  signalHandlers.set(signal, handler);
-  process.once(signal, handler);
-}
-
-main(controller.signal).then((code: number) => {
-  process.exitCode = code;
-}).catch((error: unknown) => {
-  if (controller.signal.aborted && error instanceof Error && error.name === "AbortError") {
-    process.exitCode = signalExitCode(controller.signal);
-  } else {
-    console.error(`awesome-emulator: ${formatError(error)}`);
-    process.exitCode = 1;
+export function launchCli(argv: string[] = process.argv.slice(2)): Promise<void> {
+  const controller = new AbortController();
+  const signalHandlers = new Map<ForwardedSignal, () => void>();
+  for (const signal of FORWARDED_SIGNALS) {
+    const handler = () => controller.abort(signal);
+    signalHandlers.set(signal, handler);
+    process.once(signal, handler);
   }
-}).finally(() => {
-  for (const [signal, handler] of signalHandlers) process.removeListener(signal, handler);
-});
+
+  return runCli(argv, controller.signal).then((code: number) => {
+    process.exitCode = code;
+  }).catch((error: unknown) => {
+    if (controller.signal.aborted && error instanceof Error && error.name === "AbortError") {
+      process.exitCode = signalExitCode(controller.signal);
+    } else {
+      console.error(`awesome-emulator: ${formatError(error)}`);
+      process.exitCode = 1;
+    }
+  }).finally(() => {
+    for (const [signal, handler] of signalHandlers) process.removeListener(signal, handler);
+  });
+}

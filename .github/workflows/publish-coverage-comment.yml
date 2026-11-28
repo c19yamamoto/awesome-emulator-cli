@@ -1,0 +1,79 @@
+name: Publish fork coverage comment
+
+on:
+  workflow_run:
+    workflows: [Test coverage]
+    types: [completed]
+
+permissions:
+  contents: read
+
+jobs:
+  coverage-comment:
+    if: >-
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.head_repository.full_name != github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      issues: write
+      pull-requests: read
+    steps:
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: 26
+
+      - name: Download the report artifact
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          GH_REPOSITORY: ${{ github.repository }}
+        run: gh run download "$RUN_ID" --repo "$GH_REPOSITORY" --name coverage-report --dir coverage-report
+
+      - name: Create or update the fork PR coverage comment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPOSITORY: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          HEAD_REPOSITORY: ${{ github.event.workflow_run.head_repository.full_name }}
+          PR_NUMBER: ${{ github.event.workflow_run.pull_requests[0].number }}
+          COVERAGE_RESULT: ${{ github.event.workflow_run.conclusion }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFile } from "node:fs/promises";
+
+          const marker = "<!-- awesome-emulator-coverage-report -->";
+          const report = (await readFile("coverage-report/report.md", "utf8")).replaceAll("@", `@${String.fromCharCode(0x200b)}`);
+          const [owner, repo] = process.env.GH_REPOSITORY.split("/");
+          const headers = {
+            Accept: "application/vnd.github+json",
+            Authorization: `Bearer ${process.env.GH_TOKEN}`,
+            "X-GitHub-Api-Version": "2022-11-28",
+          };
+          let prNumber = Number(process.env.PR_NUMBER);
+          if (!prNumber) {
+            const pullsResponse = await fetch(`https://api.github.com/repos/${owner}/${repo}/commits/${process.env.HEAD_SHA}/pulls`, { headers });
+            if (!pullsResponse.ok) throw new Error(`GitHub pull request lookup failed: ${pullsResponse.status} ${await pullsResponse.text()}`);
+            const pulls = await pullsResponse.json();
+            const pull = pulls.find((candidate) => candidate.head?.sha === process.env.HEAD_SHA
+              && candidate.head?.repo?.full_name === process.env.HEAD_REPOSITORY);
+            if (!pull) throw new Error(`No pull request found for ${process.env.HEAD_REPOSITORY}@${process.env.HEAD_SHA}.`);
+            prNumber = pull.number;
+          }
+
+          const endpoint = `https://api.github.com/repos/${owner}/${repo}/issues/${prNumber}/comments`;
+          const body = `${marker}\n${report}\n\nCoverage job result: ${process.env.COVERAGE_RESULT || "unknown"}.`;
+          let existing;
+          for (let page = 1; !existing; page += 1) {
+            const response = await fetch(`${endpoint}?per_page=100&page=${page}`, { headers });
+            if (!response.ok) throw new Error(`GitHub comment lookup failed: ${response.status} ${await response.text()}`);
+            const comments = await response.json();
+            existing = comments.find((comment) => comment.user?.login === "github-actions[bot]" && comment.body?.includes(marker));
+            if (existing || comments.length < 100) break;
+          }
+          const response = existing
+            ? await fetch(`${endpoint}/${existing.id}`, { method: "PATCH", headers, body: JSON.stringify({ body }) })
+            : await fetch(endpoint, { method: "POST", headers, body: JSON.stringify({ body }) });
+          if (!response.ok) throw new Error(`GitHub comment publish failed: ${response.status} ${await response.text()}`);
+          console.log(existing ? "Updated coverage comment." : `Created coverage comment on PR #${prNumber}.`);
+          NODE

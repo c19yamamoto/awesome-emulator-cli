@@ -4,7 +4,7 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { runWithEmulator, startEmulator } from "../dist/index.js";
-import { resolveEmulatorCredentialsMode, resolveEmulatorStateDirectory } from "../dist/emulator-options.js";
+import { resolveEmulatorCredentialsMode, resolveEmulatorOptions, resolveEmulatorStateDirectory } from "../dist/emulator-options.js";
 
 const cliPath = fileURLToPath(new URL("../bin/awesome-emulator.js", import.meta.url));
 
@@ -14,18 +14,26 @@ test("rejects an invalid version before requiring Docker", async () => {
 
 test("rejects invalid ports before requiring Docker", async () => {
   await assert.rejects(startEmulator({ port: 65536 }), /Invalid port/);
+  await assert.rejects(startEmulator({ port: 9297.5 }), /Invalid port/);
+  await assert.rejects(startEmulator({ port: -1 }), /Invalid port/);
+  assert.equal(resolveEmulatorOptions({ port: 0 }).requestedPort, 0);
+  assert.equal(resolveEmulatorOptions({ port: 65535 }).requestedPort, 65535);
 });
 
 test("rejects invalid telemetry settings before requiring Docker", async () => {
   await assert.rejects(startEmulator({ telemetry: "sometimes" }), /Invalid telemetry setting/);
+  assert.equal(resolveEmulatorOptions({ telemetry: "on" }).telemetry, "on");
+  assert.equal(resolveEmulatorOptions({ telemetry: "off" }).telemetry, "off");
 });
 
 test("rejects invalid memory limits before requiring Docker", async () => {
   await assert.rejects(startEmulator({ memory: "0g" }), /Invalid memory limit/);
+  await assert.rejects(startEmulator({ memory: "two gigabytes" }), /Invalid memory limit/);
 });
 
 test("rejects startup timeouts shorter than one second", async () => {
   await assert.rejects(startEmulator({ startupTimeoutMs: 999 }), /startupTimeoutMs/);
+  await assert.rejects(startEmulator({ startupTimeoutMs: 1000.5 }), /startupTimeoutMs/);
 });
 
 test("resolves credentials modes and their default from one supported list", () => {
@@ -39,6 +47,7 @@ test("uses the shared default state-directory path parts", () => {
     resolveEmulatorStateDirectory(undefined, {}, "/home/test", "/workspace"),
     path.resolve("/home/test/.aws/emulator"),
   );
+  assert.throws(() => resolveEmulatorStateDirectory("  "), /must not be empty/);
 });
 
 test("rejects an empty child region before requiring Docker", async () => {

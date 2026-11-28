@@ -109,7 +109,7 @@ function requestHealth(port: number, ca: Buffer, signal?: AbortSignal): Promise<
 
 const delay = (milliseconds: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
-type ContainerRunConfiguration = {
+export type ContainerRunConfiguration = {
   architecture: EmulatorArchitecture;
   containerName: string;
   image: string;
@@ -121,7 +121,13 @@ type ContainerRunConfiguration = {
   telemetry: "on" | "off";
 };
 
-function createContainerRunArguments({
+type HostIdentity = {
+  platform: NodeJS.Platform;
+  getuid?: () => number;
+  getgid?: () => number;
+};
+
+export function createContainerRunArguments({
   architecture,
   containerName,
   image,
@@ -131,11 +137,11 @@ function createContainerRunArguments({
   containerPort,
   stateDirectory,
   telemetry,
-}: ContainerRunConfiguration): string[] {
-  const hostUser = process.platform === "linux"
-    && typeof process.getuid === "function"
-    && typeof process.getgid === "function"
-    ? ["--user", `${process.getuid()}:${process.getgid()}`]
+}: ContainerRunConfiguration, host: HostIdentity = process): string[] {
+  const hostUser = host.platform === "linux"
+    && typeof host.getuid === "function"
+    && typeof host.getgid === "function"
+    ? ["--user", `${host.getuid()}:${host.getgid()}`]
     : [];
   const dockerLabels = Object.entries(labels).flatMap(([key, value]) => ["--label", `${key}=${value}`]);
 
@@ -296,8 +302,8 @@ export async function upEmulatorSession(
       [MANAGED_CONTAINER_LABEL]: "true",
       [SESSION_CONTAINER_LABEL]: name,
     }, stateDirectory);
-    if (init && initOptions) {
-      const childEnvironment = await createCommandEnvironment(process.env, emulator.environment, initOptions);
+    if (init) {
+      const childEnvironment = await createCommandEnvironment(process.env, emulator.environment, initOptions!);
       const exitCode = await runCommand(init.command, init.args ?? [], childEnvironment, options.signal, init.shell ?? false, "stderr");
       if (exitCode !== 0) {
         throwIfAborted(options.signal);
