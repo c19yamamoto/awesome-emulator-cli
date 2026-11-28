@@ -15,10 +15,89 @@ permissions:
   contents: read
 
 jobs:
-  sdk-smoke:
+  build-cli:
+    name: build-cli
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: 26
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies and build the CLI
+        run: npm ci
+
+      - uses: actions/cache@v6.1.0
+        with:
+          path: dist
+          key: sdk-smoke-cli-${{ github.sha }}
+
+      - id: emulator-image
+        name: Resolve emulator image tag
+        run: echo "tag=$(node scripts/resolve-emulator-image-tag.js)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@v6.1.0
+        id: emulator-image-cache
+        with:
+          path: ${{ runner.temp }}/aws-emulator-image.tar
+          key: emulator-image-${{ runner.os }}-${{ runner.arch }}-${{ steps.emulator-image.outputs.tag }}
+          restore-keys: |
+            emulator-image-${{ runner.os }}-${{ runner.arch }}-${{ steps.emulator-image.outputs.tag }}-
+
+      - name: Load cached emulator image
+        if: steps.emulator-image-cache.outputs.cache-hit != ''
+        env:
+          IMAGE_TAG: ${{ steps.emulator-image.outputs.tag }}
+        run: |
+          if ! docker load --input "$RUNNER_TEMP/aws-emulator-image.tar"; then
+            echo "Cached image could not be loaded; SDK smoke will rebuild it."
+            docker image rm "$IMAGE_TAG" >/dev/null 2>&1 || true
+          fi
+
+      - name: Prepare emulator image
+        env:
+          IMAGE_TAG: ${{ steps.emulator-image.outputs.tag }}
+        run: |
+          if ! docker image inspect "$IMAGE_TAG" >/dev/null 2>&1; then
+            node bin/awesome-emulator.js prepare
+          fi
+
+      - name: Save emulator image for future runs
+        if: steps.emulator-image-cache.outputs.cache-hit != 'true'
+        continue-on-error: true
+        env:
+          IMAGE_TAG: ${{ steps.emulator-image.outputs.tag }}
+        run: docker save --output "$RUNNER_TEMP/aws-emulator-image.tar" "$IMAGE_TAG"
+
+  sdk-smoke-target:
+    name: sdk-smoke (${{ matrix.target }})
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    needs: build-cli
+    runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aws-cli
+            tls_sdk: ''
+          - target: python
+            tls_sdk: ''
+          - target: javascript
+            tls_sdk: ''
+          - target: java
+            tls_sdk: java-v2
+          - target: go
+            tls_sdk: ''
+          - target: rust
+            tls_sdk: rust
+          - target: dotnet
+            tls_sdk: dotnet
     steps:
       - uses: actions/checkout@v7.0.1
 
@@ -31,56 +110,62 @@ jobs:
             examples/sdk-smoke/javascript/package-lock.json
 
       - uses: actions/setup-python@v7.1.0
+        if: matrix.target == 'python'
         with:
           python-version: "3.13"
           cache: pip
           cache-dependency-path: examples/sdk-smoke/python/requirements.txt
 
       - uses: actions/setup-java@v6.3.0
+        if: matrix.target == 'java'
         with:
           distribution: temurin
           java-version: "21"
           cache: maven
 
       - uses: actions/setup-go@v7.1.0
+        if: matrix.target == 'go'
         with:
           go-version: "1.25.x"
           cache-dependency-path: examples/sdk-smoke/go/go.sum
 
       - uses: actions-rust-lang/setup-rust-toolchain@v2.0.1
+        if: matrix.target == 'rust'
         with:
           toolchain: stable
 
       - uses: actions/setup-dotnet@v6.1.0
+        if: matrix.target == 'dotnet'
         with:
           dotnet-version: "8.0.x"
 
       - uses: actions/cache@v6.1.0
+        if: matrix.target == 'dotnet'
         with:
           path: ~/.nuget/packages
           key: nuget-${{ runner.os }}-${{ hashFiles('examples/sdk-smoke/dotnet/Smoke.csproj') }}
           restore-keys: |
             nuget-${{ runner.os }}-
 
-      - name: Build the CLI
-        run: npm ci && npm run build
+      - uses: actions/cache@v6.1.0
+        with:
+          path: dist
+          key: sdk-smoke-cli-${{ github.sha }}
 
       - id: emulator-image
         name: Resolve emulator image tag
         run: echo "tag=$(node scripts/resolve-emulator-image-tag.js)" >> "$GITHUB_OUTPUT"
 
-      - id: emulator-cache-period
-        name: Set weekly image cache period
-        run: echo "week=$(date -u +%G-W%V)" >> "$GITHUB_OUTPUT"
-
       - uses: actions/cache@v6.1.0
         id: emulator-image-cache
         with:
           path: ${{ runner.temp }}/aws-emulator-image.tar
-          key: emulator-image-${{ runner.os }}-${{ runner.arch }}-${{ steps.emulator-image.outputs.tag }}-${{ steps.emulator-cache-period.outputs.week }}
+          key: emulator-image-${{ runner.os }}-${{ runner.arch }}-${{ steps.emulator-image.outputs.tag }}
+          restore-keys: |
+            emulator-image-${{ runner.os }}-${{ runner.arch }}-${{ steps.emulator-image.outputs.tag }}-
 
       - name: Load cached emulator image
-        if: steps.emulator-image-cache.outputs.cache-hit == 'true'
+        if: steps.emulator-image-cache.outputs.cache-hit != ''
         env:
           IMAGE_TAG: ${{ steps.emulator-image.outputs.tag }}
         run: |
@@ -89,30 +174,58 @@ jobs:
             docker image rm "$IMAGE_TAG" >/dev/null 2>&1 || true
           fi
 
-      - name: Install SDK smoke dependencies
-        run: |
-          python -m pip install -r examples/sdk-smoke/python/requirements.txt
-          npm ci --prefix examples/sdk-smoke/javascript
-          mvn -B -f examples/sdk-smoke/java/pom.xml package dependency:build-classpath -Dmdep.outputFile=target/classpath.txt
-          (cd examples/sdk-smoke/go && go mod download && go build ./...)
-          cargo build --locked --manifest-path examples/sdk-smoke/rust/Cargo.toml
-          dotnet restore examples/sdk-smoke/dotnet/Smoke.csproj
-          dotnet build --no-restore examples/sdk-smoke/dotnet/Smoke.csproj
-          aws --version
+      - name: Install Python SDK dependencies
+        if: matrix.target == 'python'
+        run: python -m pip install -r examples/sdk-smoke/python/requirements.txt
 
-      - name: Run SDK smoke checks
+      - name: Install JavaScript SDK dependencies
+        if: matrix.target == 'javascript'
+        run: npm ci --prefix examples/sdk-smoke/javascript
+
+      - name: Build Java SDK smoke project
+        if: matrix.target == 'java'
+        run: mvn -B -f examples/sdk-smoke/java/pom.xml package dependency:build-classpath -Dmdep.outputFile=target/classpath.txt
+
+      - name: Build Go SDK smoke project
+        if: matrix.target == 'go'
+        run: cd examples/sdk-smoke/go && go mod download && go build ./...
+
+      - name: Build Rust SDK smoke project
+        if: matrix.target == 'rust'
+        run: cargo build --locked --manifest-path examples/sdk-smoke/rust/Cargo.toml
+
+      - name: Build .NET SDK smoke project
+        if: matrix.target == 'dotnet'
+        run: dotnet restore examples/sdk-smoke/dotnet/Smoke.csproj && dotnet build --no-restore examples/sdk-smoke/dotnet/Smoke.csproj
+
+      - name: Check AWS CLI availability
+        if: matrix.target == 'aws-cli'
+        run: aws --version
+
+      - name: Run SDK smoke check
         env:
+          TLS_SDK: ${{ matrix.tls_sdk }}
+          SDK_SMOKE_TARGET: ${{ matrix.target }}
           AWS_ACCESS_KEY_ID: host-credentials-must-not-leak
           AWS_SECRET_ACCESS_KEY: host-credentials-must-not-leak
           AWS_SESSION_TOKEN: host-credentials-must-not-leak
           AWS_PROFILE: host-profile-must-not-leak
           AWS_ENDPOINT_URL_STS: https://must-not-override-the-emulator.invalid
           AWS_ENDPOINT_URL_PREFIX: https://must-not-prefix-the-emulator.invalid
-        run: node bin/awesome-emulator.js run --telemetry off --sdk java-v2 --sdk rust --sdk dotnet -- bash examples/sdk-smoke/run.sh
+        run: |
+          if [ -n "$TLS_SDK" ]; then
+            node bin/awesome-emulator.js run --telemetry off --sdk "$TLS_SDK" -- bash examples/sdk-smoke/run.sh
+          else
+            node bin/awesome-emulator.js run --telemetry off -- bash examples/sdk-smoke/run.sh
+          fi
 
-      - name: Save emulator image for future runs
-        if: success() && steps.emulator-image-cache.outputs.cache-hit != 'true'
-        continue-on-error: true
+  sdk-smoke:
+    name: sdk-smoke
+    if: ${{ always() && (github.event_name != 'pull_request' || github.event.pull_request.draft == false) }}
+    needs: sdk-smoke-target
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check SDK smoke matrix result
         env:
-          IMAGE_TAG: ${{ steps.emulator-image.outputs.tag }}
-        run: docker save --output "$RUNNER_TEMP/aws-emulator-image.tar" "$IMAGE_TAG"
+          MATRIX_RESULT: ${{ needs.sdk-smoke-target.result }}
+        run: test "$MATRIX_RESULT" = success
