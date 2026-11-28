@@ -1,7 +1,7 @@
 {
   "name": "awesome-emulator-cli",
   "version": "0.6.15",
-  "description": "Run tests for AWS SDKs in any language; the CLI manages the local emulator in Docker.",
+  "description": "Run tests for AWS SDKs in any language; the CLI manages AWS Emulator in Docker or natively on Linux.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -47,6 +47,7 @@
     "aws-sdk",
     "emulator",
     "local-development",
+    "native",
     "testing",
     "integration-tests"
   ],

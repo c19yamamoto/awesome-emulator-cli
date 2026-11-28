@@ -4,17 +4,20 @@
   <img src="./assets/social-preview-v2.png" alt="Awesome Emulator CLI — Local emulator testing for AWS SDKs" width="100%">
 </p>
 
-A Node.js CLI that manages AWS Emulator in Docker and passes its connection settings to your test command. Your tests can use any AWS SDK language; they do not need to run in Node.js. The CLI itself has no production npm dependencies.
+A Node.js CLI that manages AWS Emulator in Docker or as a native Linux process and passes its connection settings to your test command. Your tests can use any AWS SDK language; they do not need to run in Node.js. The CLI itself has no production npm dependencies.
 
 This is an independent project and is not affiliated with or endorsed by Amazon Web Services.
 
 ## Requirements
 
 - Node.js 22 or later
-- Docker Engine or Docker Desktop
 - x86_64/amd64 or ARM64/aarch64
+- Docker Engine or Docker Desktop for the Docker backend
+- Linux with glibc 2.17 or later, GnuPG, and package extraction tools for the native backend
 
-On first use, Docker downloads the selected AWS Emulator RPM and signature, verifies the signature, and builds an image. The image is reused on later runs. To prepare it before tests start, run `npx awesome-emulator prepare`; use `--version` or `AWS_EMULATOR_VERSION` to select a release.
+Docker remains the default backend. On first use, it downloads the selected AWS Emulator RPM and signature, verifies the signature, and builds an image. The image is reused on later runs. To prepare it before tests start, run `npx awesome-emulator prepare`; use `--version` or `AWS_EMULATOR_VERSION` to select a release.
+
+On Linux, use `--backend native` to download the official RPM or Debian package, verify its AWS signature, and cache an unprivileged extraction under `~/.cache/awesome-emulator-cli/` (or `$XDG_CACHE_HOME/awesome-emulator-cli/`). Set `AWS_EMULATOR_CACHE_DIR` to choose a different cache root. Native mode does not install a system package or require root. It requires `gpg` and either `dpkg-deb`, or both `rpm2cpio` and `cpio`. `--backend auto` selects native on supported Linux hosts with those tools, and Docker elsewhere. A failed package download or signature check is reported directly; it never falls back to Docker. Docker remains the default for compatibility.
 
 ## Run tests
 
@@ -23,24 +26,21 @@ npm install --save-dev awesome-emulator-cli
 npx awesome-emulator run -- npm test
 ```
 
-`run` starts the emulator, supplies its endpoint and TLS settings to the child process, then stops the container. Set the child's default region with `--region`:
+`run` starts the emulator, supplies its endpoint and TLS settings to the child process, then stops it. Set the child's default region with `--region`:
 
 ```sh
 npx awesome-emulator run --region ap-northeast-1 -- npm test
 ```
 
-### Check test coverage
-
-Run the same coverage gate used by the pull request workflow with Node.js 22 or later:
+Choose a backend explicitly, or let the CLI select one:
 
 ```sh
-npm ci
-npm run coverage
+npx awesome-emulator run --backend native -- npm test
+npx awesome-emulator run --backend docker -- npm test
+npx awesome-emulator run --backend auto -- npm test
 ```
 
-The command writes a Markdown summary and machine-readable details to `coverage/`. C0 counts covered statements and C1 counts covered branch outcomes from V8 coverage through c8. The condition instrumenter records each atomic predicate's true/false outcomes for C2 and the short-circuit-reachable truth vectors for MCC. MCC marks a predicate skipped by JavaScript's `&&` or `||` evaluation as `x`. Per-file C1 is checked for every `src/**/*.ts` file, including files that no test imports.
-
-Coverage thresholds and the per-file C1 minimum live in [`ignore-test-path.ts`](./ignore-test-path.ts). Keep its exclusion list empty where possible. Any exclusion must name a `src/` file or directory and include a specific reason; excluded paths are omitted consistently and shown in the report. Coverage failures still produce `coverage/report.md` and the pull request check summary. C2/MCC instrumentation reports the source location and stops if it encounters an awaited compound condition, because wrapping that expression would alter its async evaluation context.
+The `--memory` option applies only to Docker. With `--backend auto --memory <limit>`, the CLI selects Docker so the requested limit is honored.
 
 Both `AWS_REGION` and `AWS_DEFAULT_REGION` default to `us-east-1`. An explicit region on an SDK client still takes precedence.
 
@@ -62,6 +62,19 @@ npm exec --yes --package=awesome-emulator-cli -- awesome-emulator run -- python 
 
 The same pattern works with AWS CLI, Go, Java, Rust, and .NET projects. Use `--sdk` when a command needs SDK-specific TLS settings; see the [SDK configuration guide](./docs/sdk-configuration.md).
 
+### Check test coverage
+
+Run the same coverage gate used by the pull request workflow with Node.js 22 or later:
+
+```sh
+npm ci
+npm run coverage
+```
+
+The command writes a Markdown summary and machine-readable details to `coverage/`. C0 counts covered statements and C1 counts covered branch outcomes from V8 coverage through c8. The condition instrumenter records each atomic predicate's true/false outcomes for C2 and the short-circuit-reachable truth vectors for MCC. MCC marks a predicate skipped by JavaScript's `&&` or `||` evaluation as `x`. Per-file C1 is checked for every `src/**/*.ts` file, including files that no test imports.
+
+Coverage thresholds and the per-file C1 minimum live in [`ignore-test-path.ts`](./ignore-test-path.ts). Keep its exclusion list empty where possible. Any exclusion must name a `src/` file or directory and include a specific reason; excluded paths are omitted consistently and shown in the report. Coverage failures still produce `coverage/report.md` and the pull request check summary. C2/MCC instrumentation reports the source location and stops if it encounters an awaited compound condition, because wrapping that expression would alter its async evaluation context.
+
 ## Examples
 
 See [awesome-emulator-cli-samples](https://github.com/c19yamamoto/awesome-emulator-cli-samples) for end-to-end S3 examples and integration tests using AWS SDKs in JavaScript, Python, Go, Java, Rust, and .NET.
@@ -79,7 +92,7 @@ npx awesome-emulator down --session ci-tests
 
 Use `--state-dir <path>` to override the environment variable for one command. Relative paths are resolved from the current working directory. The Node.js API accepts the same setting as `stateDirectory`.
 
-`--init` runs once after the emulator is healthy. If it fails, `up` stops the container and exits with an error. Initializer output goes to stderr so `up`'s JSON output stays machine-readable. Use `down` in an always-run CI cleanup step to stop the session after failures.
+`--init` runs once after the emulator is healthy. If it fails, `up` stops the emulator and exits with an error. Initializer output goes to stderr so `up`'s JSON output stays machine-readable. Use `down` in an always-run CI cleanup step to stop the session after failures. `--backend` works with `prepare`, `start`, `run`, and `up`; `exec` and `down` use the backend recorded when the named session started.
 
 Session metadata is stored in `<state-dir>/sessions/` and contains connection details, not credential values. The default directory is `~/.aws/emulator/` (Windows: `%USERPROFILE%\.aws\emulator\`).
 
@@ -102,7 +115,7 @@ Pass an `AbortSignal` as `signal` to cancel image building or startup. For an al
 
 ## Local files and telemetry
 
-The emulator stores its config, credentials, and CA certificate under the selected state directory. `start` and `up` return the config, credentials, and CA paths; the Node.js API exposes them as `configFile`, `credentialsFile`, and `caFile`. Resources stay in memory and are removed when the container stops.
+The emulator stores its config, credentials, and CA certificate under the selected state directory. `start` and `up` return the config, credentials, and CA paths; the Node.js API exposes them as `configFile`, `credentialsFile`, and `caFile`. Resources stay in memory and are removed when the emulator stops.
 
 Telemetry is on by default. Turn it off for a run with `--telemetry off`. See [AWS Emulator telemetry details](https://docs.aws.amazon.com/emulator/latest/userguide/telemetry.html) for what it collects.
 

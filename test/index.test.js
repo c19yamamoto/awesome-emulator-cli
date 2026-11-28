@@ -138,6 +138,7 @@ mock.module("../dist/emulator-image.js", {
 
 mock.module("../dist/session-store.js", {
   namedExports: {
+    getProcessStartMarker: () => "test",
     isSessionOwnerRunning: () => state.ownerRunning,
     readSession: async (_directory, name) => readRecord(name),
     removeSession: async (_directory, name) => {
@@ -156,6 +157,7 @@ mock.module("../dist/session-store.js", {
       if (state.writeError) throw state.writeError;
       state.records.set(record.name, record);
     },
+    writeStartingNativeSession: async () => {},
   },
 });
 
