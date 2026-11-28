@@ -55,8 +55,39 @@ jobs:
         with:
           dotnet-version: "8.0.x"
 
-      - name: Install dependencies and build the CLI
-        run: npm ci
+      - uses: actions/cache@v4.3.0
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('examples/sdk-smoke/dotnet/Smoke.csproj') }}
+          restore-keys: |
+            nuget-${{ runner.os }}-
+
+      - name: Build the CLI
+        run: npm ci && npm run build
+
+      - id: emulator-image
+        name: Resolve emulator image tag
+        run: echo "tag=$(node scripts/resolve-emulator-image-tag.js)" >> "$GITHUB_OUTPUT"
+
+      - id: emulator-cache-period
+        name: Set weekly image cache period
+        run: echo "week=$(date -u +%G-W%V)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@v4.3.0
+        id: emulator-image-cache
+        with:
+          path: ${{ runner.temp }}/aws-emulator-image.tar
+          key: emulator-image-${{ runner.os }}-${{ runner.arch }}-${{ steps.emulator-image.outputs.tag }}-${{ steps.emulator-cache-period.outputs.week }}
+
+      - name: Load cached emulator image
+        if: steps.emulator-image-cache.outputs.cache-hit == 'true'
+        env:
+          IMAGE_TAG: ${{ steps.emulator-image.outputs.tag }}
+        run: |
+          if ! docker load --input "$RUNNER_TEMP/aws-emulator-image.tar"; then
+            echo "Cached image could not be loaded; SDK smoke will rebuild it."
+            docker image rm "$IMAGE_TAG" >/dev/null 2>&1 || true
+          fi
 
       - name: Install SDK smoke dependencies
         run: |
@@ -78,3 +109,10 @@ jobs:
           AWS_ENDPOINT_URL_STS: https://must-not-override-the-emulator.invalid
           AWS_ENDPOINT_URL_PREFIX: https://must-not-prefix-the-emulator.invalid
         run: node bin/awesome-emulator.js run --telemetry off --sdk java-v2 --sdk rust --sdk dotnet -- bash examples/sdk-smoke/run.sh
+
+      - name: Save emulator image for future runs
+        if: success() && steps.emulator-image-cache.outputs.cache-hit != 'true'
+        continue-on-error: true
+        env:
+          IMAGE_TAG: ${{ steps.emulator-image.outputs.tag }}
+        run: docker save --output "$RUNNER_TEMP/aws-emulator-image.tar" "$IMAGE_TAG"
