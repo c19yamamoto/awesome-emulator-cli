@@ -1,22 +1,18 @@
-import { docker, throwIfAborted, type DockerRunner } from "./docker.js";
-
-function isMissingContainer(error: unknown): boolean {
-  return error instanceof Error && /no such (?:container|object)/i.test(error.message);
-}
+import { docker, isMissingDockerResource, throwIfAborted, type DockerRunner } from "./docker.js";
 
 export async function stopContainer(containerId: string, runDocker: DockerRunner = docker): Promise<void> {
   let stopError: unknown;
   try {
     await runDocker(["stop", "--time", "10", containerId], { capture: true });
   } catch (error) {
-    if (isMissingContainer(error)) return;
+    if (isMissingDockerResource(error, "container")) return;
     stopError = error;
   }
 
   try {
     await runDocker(["rm", "--force", containerId], { capture: true });
   } catch (error) {
-    if (isMissingContainer(error)) return;
+    if (isMissingDockerResource(error, "container")) return;
     const failures = stopError ? [stopError, error] : [error];
     throw new AggregateError(failures, `Failed to stop or remove Docker container ${containerId}.`);
   }

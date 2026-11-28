@@ -9,6 +9,14 @@ import {
 
 const emulator = createEmulatorConnectionSettings(9297, "/Users/test user/.aws/emulator");
 
+test("uses the host port for endpoints and the container port for state-file paths", () => {
+  const connection = createEmulatorConnectionSettings(54321, "/tmp/emulator-state", 51234);
+  assert.equal(connection.endpointUrl, "https://127.0.0.1:54321");
+  assert.equal(connection.healthCheckUrl, "https://127.0.0.1:54321/__admin/health");
+  assert.equal(connection.caFile, path.join("/tmp/emulator-state", "51234", "ca.pem"));
+  assert.equal(connection.credentialsFile, path.join("/tmp/emulator-state", "51234", "emulator_credentials"));
+});
+
 test("overrides AWS settings and removes host credentials and endpoints", () => {
   const child = createChildEnvironment({
     AWS_ACCESS_KEY: "host-key-legacy",

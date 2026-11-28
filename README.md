@@ -89,7 +89,7 @@ Pass an `AbortSignal` as `signal` to cancel image building or startup. For an al
 
 ## Local files and telemetry
 
-The emulator stores its config, credentials, and CA certificate under `<state-dir>/<port>/`. Resources stay in memory and are removed when the container stops.
+The emulator stores its config, credentials, and CA certificate under the selected state directory. `start` and `up` return the config, credentials, and CA paths; the Node.js API exposes them as `configFile`, `credentialsFile`, and `caFile`. Resources stay in memory and are removed when the container stops.
 
 Telemetry is on by default. Turn it off for a run with `--telemetry off`. See [AWS Emulator telemetry details](https://docs.aws.amazon.com/emulator/latest/userguide/telemetry.html) for what it collects.
 

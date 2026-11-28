@@ -14,7 +14,7 @@ export type StartingSessionRecord = {
   ownerStartMarker: string;
 };
 
-export type RunningSessionRecord = {
+export type LegacyRunningSessionRecord = {
   schemaVersion: 1;
   name: string;
   state: "running";
@@ -24,7 +24,20 @@ export type RunningSessionRecord = {
   port: number;
 };
 
-export type SessionRecord = StartingSessionRecord | RunningSessionRecord;
+export type RunningSessionRecord = {
+  schemaVersion: 2;
+  name: string;
+  state: "running";
+  containerName: string;
+  containerId: string;
+  version: string;
+  /** Host port exposed to the caller. */
+  port: number;
+  /** Port used by AWS Emulator inside the container and state directory. */
+  containerPort: number;
+};
+
+export type SessionRecord = StartingSessionRecord | LegacyRunningSessionRecord | RunningSessionRecord;
 
 export function validateSessionName(name: string): string {
   if (!SESSION_NAME_PATTERN.test(name)) {
@@ -154,19 +167,26 @@ export async function removeSession(stateDirectory: string, name: string): Promi
 function isSessionRecord(value: unknown, expectedName: string): value is SessionRecord {
   if (typeof value !== "object" || value === null) return false;
   const record = value as Record<string, unknown>;
-  if (record.schemaVersion !== 1 || record.name !== expectedName || typeof record.containerName !== "string") return false;
+  if (record.name !== expectedName || typeof record.containerName !== "string") return false;
   if (!record.containerName.startsWith("awesome-emulator-cli-session-") || !record.containerName.endsWith(`-${record.name}`)) return false;
   if (record.state === "starting") {
-    return Number.isSafeInteger(record.ownerPid)
+    return record.schemaVersion === 1
+      && Number.isSafeInteger(record.ownerPid)
       && Number(record.ownerPid) > 0
       && typeof record.ownerStartMarker === "string"
       && record.ownerStartMarker.length > 0;
   }
   if (record.state !== "running") return false;
-  return typeof record.containerId === "string"
+  const validRunningRecord = typeof record.containerId === "string"
     && /^[a-f0-9]{12,64}$/i.test(record.containerId)
     && typeof record.version === "string"
     && Number.isInteger(record.port)
     && Number(record.port) > 0
     && Number(record.port) <= 65535;
+  if (!validRunningRecord) return false;
+  if (record.schemaVersion === 1) return true;
+  return record.schemaVersion === 2
+    && Number.isInteger(record.containerPort)
+    && Number(record.containerPort) > 0
+    && Number(record.containerPort) <= 65535;
 }

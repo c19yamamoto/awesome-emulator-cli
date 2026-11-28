@@ -7,22 +7,11 @@ import {
   runWithEmulator,
   startEmulator,
   upEmulatorSession,
-  type EmulatorCredentialsMode,
-  type RunWithEmulatorOptions,
-  type StartEmulatorOptions,
 } from "./index.js";
+import { parseCliArgs } from "./cli-args.js";
 import { DEFAULT_VERSION } from "./emulator-options.js";
 import { FORWARDED_SIGNALS, getSignalExitCode, type ForwardedSignal } from "./signals.js";
-import { DEFAULT_AWS_REGION, SUPPORTED_EMULATOR_SDKS, type EmulatorSdk } from "./emulator-environment.js";
-
-type ParsedArgs =
-  | { help: true }
-  | { help: false; command?: string; options: CliOptions; commandArgs: string[] };
-
-type CliValueOption = "version" | "port" | "telemetry" | "memory" | "region" | "session" | "stateDirectory" | "credentials";
-type CliOptions = Pick<StartEmulatorOptions, "version" | "port" | "telemetry" | "memory" | "stateDirectory">
-  & Pick<RunWithEmulatorOptions, "region" | "sdks">
-  & { shell?: boolean; session?: string; init?: boolean; credentials?: EmulatorCredentialsMode };
+import { DEFAULT_AWS_REGION, SUPPORTED_EMULATOR_SDKS } from "./emulator-environment.js";
 
 function usage() {
   console.log(`Usage:
@@ -35,7 +24,7 @@ function usage() {
 
 Options:
   -v, --version <version>     AWS Emulator version (default: ${DEFAULT_VERSION})
-  -p, --port <port>           (start/run/up) Host port; 0 chooses an available port (default: 9297)
+  -p, --port <port>           (start/run/up) Host port; 0 lets Docker choose one (default: 9297)
   -t, --telemetry <on|off>    (start/run/up) Telemetry setting (default: on)
       --memory <limit>        (start/run/up) Container memory limit (default: 2g)
       --state-dir <path>      (start/run/up/exec/down) Emulator state directory (default: AWS_EMULATOR_STATE_DIR or ~/.aws/emulator)
@@ -47,103 +36,6 @@ Options:
       --shell                 (run/exec/up --init) Enable .cmd/.bat and built-ins; trusted values only
       --init                  (up only) Run a command after the emulator becomes healthy
   -h, --help                  Show this help`);
-}
-
-function parse(argv: string[]): ParsedArgs {
-  const command = argv[0];
-  if (command === "-h" || command === "--help") return { help: true };
-  const options: CliOptions = {};
-  const commandArgs: string[] = [];
-  let separator = false;
-  let initRequested = false;
-  for (let index = 1; index < argv.length; index += 1) {
-    const token = argv[index];
-    if (separator) {
-      commandArgs.push(token);
-      continue;
-    }
-    if (token === "--") {
-      if (command === "up" && !initRequested) throw new Error("The up command accepts child arguments only after --init --.");
-      separator = true;
-      continue;
-    }
-    if (token === "-h" || token === "--help") return { help: true };
-    if (token === "--init") {
-      if (command !== "up") throw new Error("--init can only be used with the up command.");
-      if (initRequested) throw new Error("--init can only be specified once.");
-      initRequested = true;
-      options.init = true;
-      continue;
-    }
-    if (token === "--shell") {
-      if (command !== "run" && command !== "exec" && command !== "up") throw new Error("--shell can only be used with the run or exec command, or with up --init.");
-      options.shell = true;
-      continue;
-    }
-    if (token === "--sdk") {
-      if (command !== "run" && command !== "exec" && command !== "up") throw new Error("--sdk can only be used with the run or exec command, or with up --init.");
-      const value = argv[index + 1];
-      if (!value || value.startsWith("--")) throw new Error("Missing value for --sdk");
-      if (!(SUPPORTED_EMULATOR_SDKS as readonly string[]).includes(value)) {
-        throw new Error(`Unsupported SDK: ${value}. Choose from ${SUPPORTED_EMULATOR_SDKS.join(", ")}.`);
-      }
-      options.sdks ??= [];
-      options.sdks.push(value as EmulatorSdk);
-      index += 1;
-      continue;
-    }
-    const optionNames: Record<string, CliValueOption> = {
-      "-v": "version", "--version": "version",
-      "-p": "port", "--port": "port",
-      "-t": "telemetry", "--telemetry": "telemetry",
-      "--memory": "memory",
-      "--region": "region",
-      "--session": "session",
-      "--state-dir": "stateDirectory",
-      "--credentials": "credentials",
-    };
-    const key = optionNames[token];
-    if (!key) throw new Error(`Unknown option: ${token}`);
-    if (key === "region" && command !== "run" && command !== "exec" && command !== "up") {
-      throw new Error("--region can only be used with the run or exec command, or with up --init.");
-    }
-    if (key === "session" && command !== "up" && command !== "exec" && command !== "down") {
-      throw new Error("--session can only be used with the up, exec, or down command.");
-    }
-    if (key === "stateDirectory" && !["start", "run", "up", "exec", "down"].includes(command ?? "")) {
-      throw new Error("--state-dir can only be used with start, run, up, exec, or down.");
-    }
-    if (key === "credentials" && command !== "run" && command !== "exec" && command !== "up") {
-      throw new Error("--credentials can only be used with the run or exec command, or with up --init.");
-    }
-    if (command === "prepare" && key !== "version") {
-      throw new Error(`${token} can only be used with the start or run command.`);
-    }
-    if ((command === "exec" || command === "down") && key !== "region" && key !== "session" && key !== "stateDirectory" && key !== "credentials") {
-      throw new Error(`${token} cannot be used with the ${command} command.`);
-    }
-    const value = argv[index + 1];
-    if (!value || value.startsWith("--")) throw new Error(`Missing value for ${token}`);
-    if (key === "credentials") {
-      if (value !== "files" && value !== "env") throw new Error("--credentials must be files or env.");
-      options.credentials = value === "env" ? "environment" : "files";
-    } else {
-      options[key] = value;
-    }
-    index += 1;
-  }
-  if ((command === "up" || command === "exec" || command === "down") && !options.session) {
-    throw new Error(`--session is required with the ${command} command.`);
-  }
-  if (command === "up") {
-    if (initRequested && (!separator || commandArgs.length === 0)) {
-      throw new Error("Usage: awesome-emulator up --session <name> [options] --init -- <command> [args...]");
-    }
-    if (!initRequested && (separator || options.region || options.sdks || options.shell || options.credentials)) {
-      throw new Error("Child command options and arguments for up require --init.");
-    }
-  }
-  return { help: false, command, options, commandArgs };
 }
 
 function waitForAbort(signal: AbortSignal): Promise<void> {
@@ -164,7 +56,7 @@ function formatError(error: unknown): string {
 }
 
 async function main(signal: AbortSignal): Promise<number> {
-  const parsed = parse(process.argv.slice(2));
+  const parsed = parseCliArgs(process.argv.slice(2));
   if (parsed.help || !parsed.command || parsed.command === "help") {
     usage();
     return 0;
