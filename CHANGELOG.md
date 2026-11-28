@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.6.15](https://github.com/c19yamamoto/awesome-emulator-cli/compare/v0.6.14...v0.6.15) (2026-11-28)
+
+
+### Bug Fixes
+
+* **ci:** regenerate actions lock ([#103](https://github.com/c19yamamoto/awesome-emulator-cli/issues/103)) ([cb471de](https://github.com/c19yamamoto/awesome-emulator-cli/commit/cb471de8149e2a54bb58fcfe162ed04f562c747f))
+
+
+### Performance Improvements
+
+* **ci:** cache SDK smoke image and NuGet packages ([#101](https://github.com/c19yamamoto/awesome-emulator-cli/issues/101)) ([e459f55](https://github.com/c19yamamoto/awesome-emulator-cli/commit/e459f550700186c7d0e44e4802bf23be3df3c937))
+* **ci:** execution time improvement ([#104](https://github.com/c19yamamoto/awesome-emulator-cli/issues/104)) ([6c49c7e](https://github.com/c19yamamoto/awesome-emulator-cli/commit/6c49c7e1612adce11036edf74b56657a28723f09))
+
 ## [0.6.14](https://github.com/c19yamamoto/awesome-emulator-cli/compare/v0.6.13...v0.6.14) (2026-11-28)
 
 
